@@ -1,0 +1,67 @@
+# Streaming (SSE)
+
+For text and JSON skills, HUSK can stream the kernel's output as it is produced instead of buffering the whole result. This is ideal for long-running kernels and for token-by-token output from a model-backed script.
+
+## Asking for a stream
+
+Add `?stream=1` to the URL, or send `Accept: text/event-stream`:
+
+```bash
+curl -N -X POST 'http://localhost:3000/skills/uppercase?stream=1' --data 'hello'
+```
+
+```
+event: stdout
+data: HELLO
+
+event: done
+data: {"ok":true,"exitCode":0}
+```
+
+The response is a [Server-Sent Events](https://developer.mozilla.org/docs/Web/API/Server-sent_events) stream.
+
+## Event types
+
+| Event    | `data`                                         |
+| -------- | ---------------------------------------------- |
+| `stdout` | A chunk of the kernel's standard output.       |
+| `stderr` | A chunk of the kernel's standard error.        |
+| `done`   | `{ ok, exitCode }` once the kernel exits.      |
+| `error`  | A message if the request could not be handled. |
+
+Chunks arrive as the kernel writes them, so a kernel that prints incrementally streams incrementally.
+
+## Consuming a stream
+
+In the browser:
+
+```js
+const res = await fetch('/skills/summarize?stream=1', { method: 'POST', body: text });
+const reader = res.body.getReader();
+const decoder = new TextDecoder();
+for (;;) {
+  const { value, done } = await reader.read();
+  if (done) break;
+  console.log(decoder.decode(value)); // raw SSE frames
+}
+```
+
+Any SSE client (`EventSource`-style parsing) works the same way.
+
+:::note
+Streaming applies to `text` and `json` skills. `file` skills always return their file as a single response, so a stream request on a file skill falls back to the normal buffered response.
+:::
+
+## Writing a streaming kernel
+
+Nothing special is required - just write to stdout incrementally and flush. For example, a Python kernel:
+
+```python
+#!/usr/bin/env python3
+import sys, time
+for word in sys.stdin.read().split():
+    print(word.upper(), flush=True)
+    time.sleep(0.1)
+```
+
+Each `print(..., flush=True)` becomes an `event: stdout` frame as it happens.

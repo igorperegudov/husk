@@ -1,0 +1,58 @@
+# How it works
+
+HUSK has one job: take a folder of skills and answer HTTP requests by running the right kernel. The whole system is four moving parts.
+
+## The four parts
+
+- A **skill** is a folder with a `SKILL.md` manifest and (usually) a script.
+- The **manifest** declares how the skill is invoked: the command to run - or `mode: llm` and the tools the model may call - plus how input arrives and what the output is.
+- The **kernel** is the thing that does the work: a script you wrote, or an LLM driven by the manifest's system prompt and tools.
+- The **husk** is the HTTP shell: it loads every skill, routes requests, runs kernels, and shapes responses.
+
+## Two kinds of kernel
+
+A skill runs in one of two ways, chosen by the manifest:
+
+- **A script kernel** (the default) - HUSK spawns your script as a child process. The contract is just streams, files, env vars, and an exit code. See the [kernel I/O contract](/skills/kernel).
+- **An LLM kernel** (`mode: llm`) - HUSK calls an LLM with the `SKILL.md` body as the system prompt. The model answers and may call the [tools](/skills/llm) you declare; each tool is itself a script HUSK runs, feeding the result back to the model until it produces a final answer.
+
+Two more modes round it out: **`static-file`** returns a file's contents with no process, and **`proxy`** forwards the request to an [upstream HTTP endpoint](/skills/proxy), injecting secret headers server-side.
+
+All of them are served identically over HTTP - a caller cannot tell which kind it hit.
+
+## The request loop
+
+A single invocation runs through four beats:
+
+1. **Route.** A request arrives (e.g. `POST /skills/uppercase`). HUSK matches it to a skill by method and path.
+2. **Read input.** HUSK turns the request body into the skill's input - text on stdin, an uploaded file on disk, or nothing (for an LLM skill, the text is the user message).
+3. **Run the kernel.** For a script skill, HUSK spawns it as a child process with a hard timeout, a bounded output buffer, and no shell. For an LLM skill, HUSK runs the model-and-tools loop.
+4. **Shape the response.** Exit `0` with stdout (or the model's final text) becomes the HTTP body; a file written by the kernel becomes a binary response; a failure becomes an HTTP error carrying stderr.
+
+```
+HTTP request ──▶ route ──▶ read input ──▶ spawn kernel ──▶ shape response ──▶ HTTP reply
+                  │            │               │                  │
+              method+path   stdin/file    child process       stdout/file
+```
+
+## Why a child process
+
+Running each kernel as a separate process is what makes HUSK language-agnostic. The contract between the husk and the kernel is just **streams, files, environment variables, and an exit code** - things every language already has. You never import a HUSK library into your kernel, so a bash one-liner and a Python data pipeline are first-class in exactly the same way.
+
+The runner is hardened: it never uses a shell (so arguments can't be reinterpreted), it kills runaway kernels at a deadline, it caps captured output, and it always closes stdin so a kernel waiting on input can't hang the server.
+
+## One folder, many runtimes
+
+Because the core is a plain function - load the skills, then `invoke(skill, input)` - the same skill folder runs in three shapes without changes:
+
+- a **long-lived server** (`husk serve`),
+- a **one-shot / serverless** call (`husk call`, or the Web `fetch` handler mounted in a function), and
+- a **container** (`husk build --docker`).
+
+See [One skill, three runtimes](/serve/runtimes) for the details.
+
+## Where to go next
+
+- Build something: [Anatomy of a skill](/skills/anatomy).
+- Understand the contract: [The kernel I/O contract](/skills/kernel).
+- Get it online: [The HTTP server](/serve/http).

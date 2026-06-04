@@ -1,0 +1,84 @@
+# CLI
+
+The `husk` command is the main way to work with skills. Install it globally with Bun:
+
+```bash
+bun add -g @elisymlabs/husk
+```
+
+It provides six commands: `serve`, `list`, `call`, `new`, `init`, and `build`.
+
+## `husk init`
+
+Create a project with a `./skills` folder and a starter skill.
+
+```bash
+husk init [dir]
+```
+
+## `husk new`
+
+Scaffold a new skill folder with a `SKILL.md` and a starter kernel.
+
+```bash
+husk new <name> --lang python
+```
+
+| Flag         | Default  | Notes                                    |
+| ------------ | -------- | ---------------------------------------- |
+| `-l, --lang` | `bash`   | Kernel language: `bash`, `python`, `ts`. |
+| `-d, --dir`  | `skills` | Directory to create the skill in.        |
+
+## `husk serve`
+
+Serve a folder of skills over HTTP with one long-lived Bun process. See [The HTTP server](/serve/http) for the full option list.
+
+```bash
+husk serve [dir] --watch --port 8080
+```
+
+## `husk list`
+
+List the skills discovered in a directory, with their routes and I/O shapes.
+
+```bash
+husk list [dir]
+husk list --json        # machine-readable cards
+```
+
+## `husk call`
+
+Invoke a skill locally without HTTP - the one-shot / serverless code path. Great for development and testing.
+
+```bash
+echo "hello" | husk call uppercase -i -
+husk call site-status -i "example.com"
+husk call remove-bg -f photo.jpg -o ./out
+```
+
+| Flag          | Notes                                              |
+| ------------- | -------------------------------------------------- |
+| `-i, --input` | Text input. `-` reads stdin; `@path` reads a file. |
+| `-f, --file`  | File input (for `file`-input skills).              |
+| `-o, --out`   | Directory to write file outputs into.              |
+| `-d, --dir`   | Skills directory.                                  |
+
+Text and JSON results print to stdout; file results are written to disk and their paths reported on stderr - so you can pipe stdout cleanly.
+
+## `husk build`
+
+Generate deployment artifacts. Today this means a Dockerfile - see [Containers](/serve/docker).
+
+```bash
+husk build [dir] --docker --port 8080
+```
+
+| Flag         | Notes                                          |
+| ------------ | ---------------------------------------------- |
+| `--docker`   | Emit a Dockerfile (+ `.dockerignore`).         |
+| `-p, --port` | Port the container serves on (default `3000`). |
+| `--force`    | Overwrite an existing Dockerfile.              |
+
+## Directory resolution
+
+Commands that take an optional `[dir]` resolve it the same way: the explicit argument if given, otherwise `./skills` if it exists, otherwise the current directory.

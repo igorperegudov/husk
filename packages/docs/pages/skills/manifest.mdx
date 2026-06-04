@@ -1,0 +1,123 @@
+# The manifest
+
+`SKILL.md` is YAML frontmatter followed by a Markdown body. The frontmatter declares how the skill runs; the body is documentation and is ignored at runtime.
+
+```markdown
+---
+# YAML frontmatter (see fields below)
+---
+
+Markdown body - shown in the skill card, ignored at runtime.
+```
+
+## Required fields
+
+| Field         | Type   | Notes                                                 |
+| ------------- | ------ | ----------------------------------------------------- |
+| `name`        | string | Human-facing name. Its kebab-case slug is the URL id. |
+| `description` | string | One-line summary, shown in cards and OpenAPI.         |
+
+Every skill also needs **either** `run` **or** `serve`.
+
+## Running a kernel
+
+| Field        | Default | Notes                                                                    |
+| ------------ | ------- | ------------------------------------------------------------------------ |
+| `run`        | -       | The kernel command. A string (`python3 main.py`) or a YAML list of args. |
+| `timeout_ms` | `60000` | Hard timeout; the kernel is SIGKILLed past it.                           |
+
+`run` as a string is split on whitespace. For arguments that contain spaces, use the list form:
+
+```yaml
+run: ./remove-bg.sh                  # local script (made executable on load)
+run: python3 scripts/site_status.py  # interpreter on PATH + relative script
+run:                                 # list form, for args with spaces
+  - node
+  - --experimental-strip-types
+  - main.ts
+```
+
+`argv[0]` is resolved against the skill folder when it looks like a path (`./x`, `a/b`); otherwise it is looked up on `PATH`. The kernel's working directory is always the skill folder.
+
+## Serving a static file
+
+| Field   | Notes                                                           |
+| ------- | --------------------------------------------------------------- |
+| `serve` | Path to a file to return. No kernel runs. Use instead of `run`. |
+
+## LLM mode
+
+Set `mode: llm` (or just declare `tools`) and an LLM runs the skill instead of a script. The `SKILL.md` body becomes the system prompt; the request body is the user message.
+
+| Field             | Default          | Notes                                                              |
+| ----------------- | ---------------- | ------------------------------------------------------------------ |
+| `mode: llm`       | -                | Selects the LLM executor. Implied when `tools` is set.             |
+| `tools`           | -                | Scripts the model may call. See [LLM skills & tools](/skills/llm). |
+| `provider`        | `anthropic`      | `anthropic`, `openai`, `xai`, `google`, `deepseek`.                |
+| `model`           | provider default | The model to use.                                                  |
+| `max_tokens`      | `4096`           | Output token cap.                                                  |
+| `max_tool_rounds` | `10`             | Max LLM-to-tools rounds.                                           |
+
+```yaml
+---
+name: Assistant
+description: A concise general assistant.
+mode: llm
+---
+You are a concise, helpful assistant. Answer in plain text.
+```
+
+A skill with **neither `run` nor `serve`** defaults to `mode: llm` - so a bare prompt skill, or any elisym `llm`-mode skill, just works. Full details in [LLM skills & tools](/skills/llm).
+
+## Proxy mode
+
+Set `proxy:` (which implies `mode: proxy`) to forward the request to an upstream HTTP endpoint, injecting secret headers server-side.
+
+| Field             | Default           | Notes                                                       |
+| ----------------- | ----------------- | ----------------------------------------------------------- |
+| `proxy`           | -                 | Upstream URL. Sets `mode: proxy`.                           |
+| `headers`         | -                 | Headers to send upstream; values may use `${VAR}` from env. |
+| `forward_headers` | -                 | Incoming header names to pass through.                      |
+| `proxy_method`    | invocation method | Override the upstream HTTP method.                          |
+
+```yaml
+---
+name: Anthropic Proxy
+description: Forward chat requests to Anthropic, injecting the API key.
+mode: proxy
+proxy: https://api.anthropic.com/v1/messages
+headers:
+  x-api-key: ${ANTHROPIC_API_KEY}
+  anthropic-version: '2023-06-01'
+---
+```
+
+Full details in [Proxy skills](/skills/proxy).
+
+## Input and output
+
+| Field    | Default | Values                                                      |
+| -------- | ------- | ----------------------------------------------------------- |
+| `input`  | `text`  | `text` (stdin), `file` (`$HUSK_INPUT_FILE`), or `none`.     |
+| `output` | `text`  | `text` (stdout), `json` (stdout served as JSON), or `file`. |
+
+See [The kernel I/O contract](/skills/kernel) for exactly how each value flows.
+
+## HTTP shape
+
+| Field         | Default          | Notes                                                |
+| ------------- | ---------------- | ---------------------------------------------------- |
+| `method`      | `POST`           | HTTP verb that invokes the skill.                    |
+| `route`       | `/skills/<slug>` | Custom invocation path. Must start with `/`.         |
+| `input_mime`  | -                | Advertised MIME for `file` input (a discovery hint). |
+| `output_mime` | -                | `Content-Type` used for `file` output.               |
+
+:::note
+`GET /skills/<slug>` always returns the skill's **card** (its metadata). Invocation defaults to `POST`, so the two never collide. If you set `method: GET`, also set a custom `route` to avoid shadowing the card.
+:::
+
+## Unknown fields are ignored
+
+Any frontmatter key HUSK does not recognize is preserved but ignored. That is what makes existing Agent Skills and elisym manifests load unchanged - marketplace fields like `price`, `token`, `capabilities`, and `tools` are simply skipped. See [Compatibility](/reference/compatibility).
+
+A complete field table lives in the [manifest fields reference](/reference/manifest-fields).

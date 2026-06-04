@@ -1,0 +1,216 @@
+# Examples
+
+A handful of small skills that together cover every mode. Each is a folder with a `SKILL.md` and a kernel; the full set ships in the [`examples/`](https://github.com/elisymlabs/husk/tree/main/examples) directory of the repo.
+
+:::file-tree
+
+- +examples
+  - +uppercase script · text → text
+    - SKILL.md
+    - upper.sh
+  - +utc-now script · none → text
+    - SKILL.md
+    - now.sh
+  - +site-status script · text → json
+    - SKILL.md
+    - site_status.py
+  - +welcome static-file
+    - SKILL.md
+    - welcome.md
+  - +assistant llm · no tools
+    - SKILL.md
+  - +site-checker llm · with a tool
+    - SKILL.md
+    - check.py
+  - +anthropic-proxy proxy
+    - SKILL.md
+
+:::
+
+## Uppercase - text → text
+
+The simplest possible skill: read stdin, write stdout, no dependencies.
+
+```yaml
+---
+name: Uppercase
+description: Send any text, get it back in upper case.
+run: ./upper.sh
+input: text
+output: text
+---
+```
+
+```bash
+#!/bin/sh
+exec tr 'a-z' 'A-Z'
+```
+
+```bash
+curl -X POST localhost:3000/skills/uppercase --data 'hello world'
+# HELLO WORLD
+```
+
+## UTC Now - none → text
+
+A no-input skill. Because `input: none`, the kernel runs with an empty stdin.
+
+```yaml
+---
+name: UTC Now
+description: Returns the current UTC timestamp.
+run: ./now.sh
+input: none
+output: text
+---
+```
+
+```bash
+#!/bin/sh
+date -u +%Y-%m-%dT%H:%M:%SZ
+```
+
+## Site Status - text → json
+
+A Python kernel that reads a URL and returns a JSON report. `output: json` means HUSK serves the stdout as `application/json`.
+
+```yaml
+---
+name: Site Status
+description: Send a URL, get back its HTTP status and timing as JSON.
+run: python3 site_status.py
+input: text
+output: json
+timeout_ms: 20000
+---
+```
+
+```python
+#!/usr/bin/env python3
+import json, sys, time, urllib.request
+
+url = sys.stdin.read().strip()
+if not url.startswith(("http://", "https://")):
+    url = "https://" + url
+
+started = time.monotonic()
+with urllib.request.urlopen(url, timeout=15) as resp:
+    print(json.dumps({
+        "url": url,
+        "status_code": resp.status,
+        "response_time_ms": round((time.monotonic() - started) * 1000),
+        "server": resp.headers.get("Server"),
+    }, indent=2))
+```
+
+```bash
+curl -X POST localhost:3000/skills/site-status --data 'example.com'
+```
+
+## Welcome - static file
+
+No kernel at all: `serve:` returns a file's contents directly.
+
+```yaml
+---
+name: Welcome
+description: Returns a fixed welcome message from a static file.
+serve: ./welcome.md
+output: text
+---
+```
+
+```bash
+curl -X POST localhost:3000/skills/welcome
+```
+
+## Assistant - LLM, no tools
+
+A pure `mode: llm` skill. The body is the system prompt; the request body is the user message. Needs `ANTHROPIC_API_KEY`.
+
+```yaml
+---
+name: Assistant
+description: A concise general assistant.
+mode: llm
+---
+You are a concise, helpful assistant. Answer in plain text, in 5-10 sentences.
+```
+
+```bash
+curl -X POST localhost:3000/skills/assistant --data 'Summarize the plot of Hamlet in two sentences.'
+```
+
+## Site Checker - LLM + a tool
+
+The LLM checks a site by calling a Python tool, then explains the result. See [LLM skills & tools](/skills/llm).
+
+```yaml
+---
+name: Site Checker
+description: Ask about any website - the LLM checks its live status and explains it.
+mode: llm
+tools:
+  - name: check_status
+    description: Check a website's live HTTP status. Returns JSON with url, status_code, response_time_ms, server.
+    command: ['python3', 'check.py']
+    parameters:
+      - name: url
+        description: URL to check (e.g. example.com)
+        required: true
+---
+You are a website status assistant. Call check_status with the URL, then
+explain the result in plain English.
+```
+
+```python
+#!/usr/bin/env python3
+import json, sys, time, urllib.request
+url = sys.argv[1]
+if not url.startswith(("http://", "https://")):
+    url = "https://" + url
+started = time.monotonic()
+with urllib.request.urlopen(url, timeout=15) as resp:
+    print(json.dumps({
+        "url": url,
+        "status_code": resp.status,
+        "response_time_ms": round((time.monotonic() - started) * 1000),
+        "server": resp.headers.get("Server"),
+    }))
+```
+
+```bash
+curl -X POST localhost:3000/skills/site-checker --data 'Is example.com up, and how fast is it?'
+```
+
+## Anthropic Proxy - reverse proxy
+
+`mode: proxy` forwards the request to an upstream and injects a secret header server-side. No script, no LLM loop. See [Proxy skills](/skills/proxy).
+
+```yaml
+---
+name: Anthropic Proxy
+description: Forward chat requests to Anthropic, injecting the API key server-side.
+mode: proxy
+proxy: https://api.anthropic.com/v1/messages
+headers:
+  x-api-key: ${ANTHROPIC_API_KEY}
+  anthropic-version: '2023-06-01'
+---
+```
+
+```bash
+curl -X POST localhost:3000/skills/anthropic-proxy \
+  -H 'content-type: application/json' \
+  -d '{"model":"claude-haiku-4-5-20251001","max_tokens":128,"messages":[{"role":"user","content":"hi"}]}'
+```
+
+## Run them all
+
+```bash
+git clone https://github.com/elisymlabs/husk
+cd husk && bun install
+ANTHROPIC_API_KEY=sk-... bun packages/cli/dist/index.js serve examples
+```
+
+For a file-producing kernel (images, audio, documents), write to `$HUSK_OUTPUT_FILE` and set `output: file` - see the [kernel I/O contract](/skills/kernel).

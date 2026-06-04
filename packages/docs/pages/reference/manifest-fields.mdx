@@ -1,0 +1,89 @@
+# Manifest fields
+
+The complete list of `SKILL.md` frontmatter fields HUSK reads. HUSK-native fields take priority; elisym fields are accepted as fallbacks. Any unrecognized key is preserved but ignored.
+
+## Identity
+
+| Field         | Type   | Required | Notes                                                 |
+| ------------- | ------ | -------- | ----------------------------------------------------- |
+| `name`        | string | yes      | Human-facing name; its kebab-case slug is the URL id. |
+| `description` | string | yes      | One-line summary for cards and OpenAPI.               |
+
+## Mode
+
+| Field  | Type | Default | Notes                                                                          |
+| ------ | ---- | ------- | ------------------------------------------------------------------------------ |
+| `mode` | enum | derived | `script` (a `run` command), `static-file` (a `serve` file), `llm`, or `proxy`. |
+
+`mode` is usually inferred: `proxy:` → `proxy`, `run` → `script`, `serve` → `static-file`, `tools` or neither `run` nor `serve` → `llm`. Set it explicitly for a pure-prompt `llm` skill.
+
+## Script behavior
+
+| Field   | Type           | Notes                                                                 |
+| ------- | -------------- | --------------------------------------------------------------------- |
+| `run`   | string or list | Kernel command. String is split on whitespace; list is used verbatim. |
+| `serve` | string         | Path to a static file to return; no kernel runs.                      |
+
+## LLM behavior (`mode: llm`)
+
+| Field             | Type   | Default          | Notes                                               |
+| ----------------- | ------ | ---------------- | --------------------------------------------------- |
+| `tools`           | list   | -                | Scripts the model may call (see below).             |
+| `provider`        | string | `anthropic`      | `anthropic`, `openai`, `xai`, `google`, `deepseek`. |
+| `model`           | string | provider default | The model id.                                       |
+| `max_tokens`      | number | `4096`           | Output token cap (positive integer).                |
+| `max_tool_rounds` | number | `10`             | Max LLM-to-tools rounds (positive integer).         |
+
+Each `tools` entry: `name`, `description`, `command` (argv string or list), and optional `parameters` (each `name`, `description`, `required`). Full semantics in [LLM skills & tools](/skills/llm). The system prompt is the `SKILL.md` body.
+
+## Proxy behavior (`mode: proxy`)
+
+| Field             | Type     | Default           | Notes                                                        |
+| ----------------- | -------- | ----------------- | ------------------------------------------------------------ |
+| `proxy`           | string   | -                 | Upstream URL (http/https). Setting it implies `mode: proxy`. |
+| `headers`         | map      | -                 | Headers sent upstream; values may use `${VAR}` from env.     |
+| `forward_headers` | string[] | -                 | Incoming header names forwarded to the upstream.             |
+| `proxy_method`    | string   | invocation method | Override the upstream HTTP method.                           |
+
+Full semantics in [Proxy skills](/skills/proxy).
+
+## I/O
+
+| Field         | Type   | Default | Notes                                                   |
+| ------------- | ------ | ------- | ------------------------------------------------------- |
+| `input`       | enum   | `text`  | `text` (stdin), `file` (`$HUSK_INPUT_FILE`), or `none`. |
+| `output`      | enum   | `text`  | `text` (stdout), `json` (stdout as JSON), or `file`.    |
+| `input_mime`  | string | -       | Advertised MIME for `file` input (discovery hint).      |
+| `output_mime` | string | -       | `Content-Type` used for `file` output responses.        |
+
+## Execution
+
+| Field        | Type   | Default | Notes                                                                   |
+| ------------ | ------ | ------- | ----------------------------------------------------------------------- |
+| `timeout_ms` | number | `60000` | Hard timeout. For script skills, the kernel; for `llm`, each tool call. |
+
+## HTTP
+
+| Field    | Type   | Default          | Notes                                        |
+| -------- | ------ | ---------------- | -------------------------------------------- |
+| `method` | enum   | `POST`           | `GET`, `POST`, `PUT`, `PATCH`, or `DELETE`.  |
+| `route`  | string | `/skills/<slug>` | Custom invocation path; must start with `/`. |
+
+## elisym fallbacks
+
+These are read only when the HUSK-native field is absent, so existing elisym skill folders load unchanged:
+
+| elisym field                 | Mapped to                                   |
+| ---------------------------- | ------------------------------------------- |
+| `script`                     | `run`                                       |
+| `command`                    | `run`                                       |
+| `mode: llm`                  | `mode: llm` (with `tools`, `provider`, ...) |
+| `mode: dynamic-script`       | a script skill (`input` from `input_mime`)  |
+| `mode: static-script`        | a script skill with `input: none`           |
+| `mode: static-file`          | `serve` (from `output_file`)                |
+| `script_timeout_ms`          | `timeout_ms`                                |
+| `max_execution_secs`         | `timeout_ms` (× 1000)                       |
+| `input_mime` / `output_mime` | input/output kind + response MIME           |
+| `input_text: none`           | `input: none`                               |
+
+Marketplace-only fields - `price`, `token`, `mint`, `capabilities`, `rate_limit` - are **ignored** (preserved but not acted on). The LLM fields (`tools`, `provider`, `model`, `max_tokens`, `max_tool_rounds`) are honored. See [Compatibility](/reference/compatibility).

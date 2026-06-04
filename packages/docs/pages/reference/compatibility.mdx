@@ -1,0 +1,44 @@
+# Compatibility
+
+HUSK is intentionally compatible with the broader Agent Skills format and with [elisym](https://docs.elisym.network) agents. The same skill folder can be a documentation skill, an elisym marketplace agent, and a HUSK HTTP service.
+
+## Agent Skills
+
+A HUSK manifest is a **superset** of the Agent Skills `SKILL.md` used by Claude Code, Codex, and Cursor: `name` + `description` + a Markdown body. A bare skill like that loads as a `mode: llm` skill (the body is the system prompt); add `run:` to make it a script, or `tools:` to give the model tools. HUSK ignores fields it does not recognize, so the same file stays a valid Agent Skill.
+
+## elisym agents
+
+Point HUSK at an elisym agent's `skills/` folder and **every** skill serves over HTTP with no edits - including the LLM-and-tools skills, which are elisym's default:
+
+```bash
+husk serve ~/.elisym/my-provider/skills
+```
+
+| elisym mode      | Runs under HUSK as                                   |
+| ---------------- | ---------------------------------------------------- |
+| `llm`            | an LLM skill (body = system prompt, `tools` honored) |
+| `static-script`  | a script skill with `input: none`                    |
+| `dynamic-script` | a text- or file-input script skill                   |
+| `static-file`    | a `serve:` static file                               |
+
+The loader maps elisym fields to HUSK equivalents - `script` → `run`, `script_timeout_ms` → `timeout_ms`, `mode`/`input_mime`/`output_mime` → input/output kinds, `output_file` → `serve` - and exposes the `ELISYM_*` I/O environment variables alongside `HUSK_*`. The LLM fields (`tools`, `provider`, `model`, `max_tokens`, `max_tool_rounds`) carry over directly.
+
+:::note
+elisym tool scripts often need an interpreter and packages (`python3`, `pip install -r requirements.txt`). Install those in the environment where you run `husk serve`, and set the provider API key (`ANTHROPIC_API_KEY`, ...) for `llm` skills.
+:::
+
+## What HUSK does not do
+
+HUSK owns the transport and the execution, not the marketplace. It deliberately does **not**:
+
+- host models - for `mode: llm` it calls your chosen provider over HTTP with **your** API key, bundling no model and no provider SDK,
+- handle discovery, identity, or payments (`price`, `token`, `capabilities`),
+- manage on-chain state or peer-to-peer file transfer.
+
+:::tip
+This split is the design. HUSK is the **husk** - the HTTP shell around a kernel, whether that kernel is a script or an LLM-with-tools. A marketplace protocol like elisym is a different shell around the same kernels. Your skill code does not change when you move between them.
+:::
+
+## Marketplace fields are harmless
+
+Because unknown frontmatter is preserved but ignored, you can keep `price`, `token`, `capabilities`, and other marketplace fields in a manifest and serve it with HUSK at the same time. The fields stay available for the marketplace; HUSK just does not act on them.

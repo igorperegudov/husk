@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="72" height="27" viewBox="0 0 72 27" role="img" aria-label="husk">
+  <defs>
+    <filter id="husk-glow" x="-12%" y="-20%" width="124%" height="140%">
+      <feGaussianBlur stdDeviation="0.9" result="b" />
+      <feMerge>
+        <feMergeNode in="b" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+  <text
+    x="3"
+    y="23"
+    font-family="ui-monospace, SFMono-Regular, 'Cascadia Code', Menlo, Consolas, monospace"
+    font-size="27"
+    font-weight="600"
+    fill="#3FE07B"
+    filter="url(#husk-glow)"
+    xml:space="preserve"
+  >husk</text>
+</svg>

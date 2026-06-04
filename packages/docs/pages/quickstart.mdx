@@ -1,0 +1,99 @@
+# Quickstart
+
+Get a skill serving over HTTP in under a minute. HUSK runs on [Bun](https://bun.sh); install it first if you have not.
+
+## Install
+
+```bash
+bun add -g @elisymlabs/husk
+```
+
+Check it:
+
+```bash
+husk --help
+```
+
+## Create a project
+
+```bash
+husk init my-agent
+cd my-agent
+```
+
+This writes a `skills/` folder with a starter `hello` skill:
+
+:::file-tree
+
+- +my-agent
+  - +skills
+    - +hello the starter skill
+      - SKILL.md the manifest
+      - run.sh the kernel
+
+:::
+
+## Serve it
+
+```bash
+husk serve
+```
+
+```
+  HUSK serving 1 skill(s)
+  from /…/my-agent/skills
+
+  POST   /skills/hello              hello
+
+  → http://localhost:3000
+```
+
+In another terminal:
+
+```bash
+curl -X POST http://localhost:3000/skills/hello --data 'world'
+# you said: world
+```
+
+Open `http://localhost:3000` for the index, or `http://localhost:3000/openapi.json` for the generated spec.
+
+## Add your own skill
+
+Scaffold one in the language you like:
+
+```bash
+husk new weather --lang python
+```
+
+Edit `skills/weather/run.py` - read input from stdin, print the result to stdout - and reload:
+
+```bash
+husk serve --watch
+```
+
+:::tip
+`--watch` reloads skills when files change, so you can edit a kernel and re-`curl` without restarting the server.
+:::
+
+## Test without HTTP
+
+`husk call` invokes a skill exactly the way the server would, but from the command line - handy for development and for serverless entry points:
+
+```bash
+echo "hello" | husk call uppercase -i -
+husk call weather -i "Berlin"
+```
+
+## Start a prompt
+
+Prefer to let your AI assistant drive? Hand it this:
+
+```txt
+Read https://husk.elisym.network and scaffold a HUSK skill in Python that takes a city name on stdin and prints the current weather as JSON, then serve it with `husk serve` and show me a working curl.
+```
+
+## Next steps
+
+- [Anatomy of a skill](/skills/anatomy) - the folder, the manifest, the script.
+- [The kernel I/O contract](/skills/kernel) - exactly how input and output flow.
+- [One skill, three runtimes](/serve/runtimes) - ship the same folder as a function or container.

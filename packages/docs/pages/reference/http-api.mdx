@@ -1,0 +1,97 @@
+# HTTP API
+
+Every HUSK server exposes a small fixed surface plus one invoke endpoint per skill.
+
+## Fixed endpoints
+
+### `GET /`
+
+An HTML index listing every skill with its method, route, and I/O shape.
+
+### `GET /skills`
+
+A JSON array of skill cards.
+
+```json
+[
+  {
+    "name": "Uppercase",
+    "slug": "uppercase",
+    "description": "Send any text, get it back in upper case.",
+    "method": "POST",
+    "route": "/skills/uppercase",
+    "input": "text",
+    "output": "text",
+    "doc": "# Uppercase\n..."
+  }
+]
+```
+
+### `GET /skills/:slug`
+
+A single skill card (same shape as one array element above), or `404` if unknown.
+
+### `GET /openapi.json`
+
+An OpenAPI 3.1 document generated from the manifests - one path per skill with the correct request body and response content types. Point Swagger UI, a client generator, or an agent at it.
+
+### `GET /healthz`
+
+```json
+{ "status": "ok", "skills": 4 }
+```
+
+## Invoking a skill
+
+```
+<method> <route>
+```
+
+Defaults to `POST /skills/<slug>`; both are overridable per skill via `method` and `route`.
+
+### Request
+
+| Content type           | Interpreted as                                                      |
+| ---------------------- | ------------------------------------------------------------------- |
+| `text/plain`           | The text input (stdin).                                             |
+| `application/json`     | A bare string, `{ "input": "..." }`, or the raw body as text.       |
+| `multipart/form-data`  | First file part → file input; `text`/`input`/`prompt` field → text. |
+| any other (binary)     | For `file`-input skills, the raw body is the file.                  |
+| `GET` query parameters | `input`, `q`, or `text` is the text input.                          |
+
+### Response
+
+| `output`      | Success response                                                                      |
+| ------------- | ------------------------------------------------------------------------------------- |
+| `text`        | `200`, `text/plain`, body = stdout.                                                   |
+| `json`        | `200`, `application/json`, body = stdout.                                             |
+| `file` (one)  | `200`, the file's MIME type, body = file bytes. Note in `x-husk-note`.                |
+| `file` (many) | `200`, `application/json`: `{ note, files: [{ filename, mime, size, dataBase64 }] }`. |
+
+Every response carries `x-husk-duration-ms`.
+
+### Errors
+
+| Status | When                                         |
+| ------ | -------------------------------------------- |
+| `400`  | Malformed request.                           |
+| `401`  | `auth` hook rejected the request.            |
+| `404`  | Unknown path.                                |
+| `405`  | Known path, wrong method.                    |
+| `413`  | Request body over `maxBodyBytes`.            |
+| `500`  | Kernel failed (non-zero exit / spawn error). |
+| `504`  | Kernel exceeded `timeout_ms`.                |
+
+Error bodies are JSON:
+
+```json
+{ "error": "kernel exited with code 1", "stderr": "...", "exitCode": 1 }
+```
+
+## Streaming
+
+Add `?stream=1` or `Accept: text/event-stream` to a `text`/`json` invocation to receive Server-Sent Events instead of a buffered body. See [Streaming](/serve/streaming).
+
+## CORS
+
+Permissive CORS headers are sent by default (disable with `--no-cors`, or `cors: false` when embedding). `OPTIONS` preflight requests are answered with `204`.

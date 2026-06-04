@@ -1,0 +1,20 @@
+node_modules/
+dist/
+.turbo/
+*.tsbuildinfo
+*.log
+npm-debug.log*
+.env
+.env.*
+!.env.example
+.DS_Store
+.cache/
+temp/
+.vscode
+.idea
+bun.lock
+
+# Vocs (docs) build + generated files
+.vocs/
+packages/docs/cache/
+packages/docs/pages.gen.ts

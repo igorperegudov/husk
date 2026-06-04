@@ -1,0 +1,60 @@
+# One skill, three runtimes
+
+The same skill folder runs unchanged as a long-lived server, a one-shot function, and a container. You do not rewrite anything when you change where it runs - only the adapter around the core `invoke` changes.
+
+This works because the engine is a plain function: load the skills, then `invoke(skill, input)`. The server, the CLI, and any serverless handler are thin shells over it.
+
+## As a long-lived node
+
+The default. One Bun process holds the skills in memory and answers requests.
+
+```bash
+husk serve ./skills
+```
+
+Best for steady traffic, warm processes, and skills that benefit from a resident runtime.
+
+## As a one-shot / serverless function
+
+`husk call` runs a single skill from stdin to stdout - the same code path the server uses, with no HTTP:
+
+```bash
+echo "hello" | husk call uppercase -i -
+husk call site-status -i "example.com"
+```
+
+That is the shape a serverless function wants: receive input, run once, return output, exit. Because the engine's HTTP handler is a Web-standard `fetch` function, you can also mount it directly in environments that speak `Request`/`Response`:
+
+```ts
+import { loadSkills, createFetchHandler } from '@elisymlabs/husk-core';
+
+const { skills } = loadSkills('./skills');
+const handler = createFetchHandler({ skills });
+
+// Cloudflare Workers / Deno Deploy / Vercel edge:
+export default { fetch: handler };
+```
+
+Best for spiky or low traffic, where you only pay when a request arrives.
+
+## As a container
+
+`husk build --docker` emits a Dockerfile that installs the CLI and runs `husk serve` on your skills:
+
+```bash
+husk build --docker
+docker build -t my-skills .
+docker run -p 3000:3000 my-skills
+```
+
+Best for portable deploys to any container platform. See [Containers](/serve/docker).
+
+## Why it is the same folder
+
+| Runtime   | Adapter                        | Entry                              |
+| --------- | ------------------------------ | ---------------------------------- |
+| Server    | `Bun.serve` + fetch handler    | `husk serve`                       |
+| Function  | one `invoke`, or fetch handler | `husk call` / `createFetchHandler` |
+| Container | server, packaged               | `husk build --docker`              |
+
+The kernel never knows which one it is running under. Its contract - stdin, stdout, files, exit code - is identical in all three. That is the whole point of separating the _husk_ (transport) from the _kernel_ (your code).

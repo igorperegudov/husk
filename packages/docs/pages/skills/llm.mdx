@@ -1,0 +1,153 @@
+# LLM skills & tools
+
+A skill does not have to be a script you wrote. With `mode: llm`, **the LLM runs the skill**: the `SKILL.md` body becomes its system prompt, the request body is the user's message, and the model answers - optionally calling the `tools` you declare. Each tool is an external script. HUSK runs the tool, feeds the output back to the model, and loops until the model produces a final answer.
+
+This is the same model elisym agents use, served over HTTP.
+
+## A pure-prompt skill
+
+The simplest LLM skill has no tools - just a system prompt:
+
+```yaml
+---
+name: Assistant
+description: A concise general assistant.
+mode: llm
+---
+You are a concise, helpful assistant. Answer in plain text, in 5-10 sentences,
+in the language the user wrote in. Never refuse or ask clarifying questions.
+```
+
+```bash
+curl -X POST localhost:3000/skills/assistant --data 'Summarize the plot of Hamlet in two sentences.'
+```
+
+The text below the frontmatter is the **system prompt**. The POST body is the **user message**.
+
+## A skill with tools
+
+Declare `tools` and the model can call them mid-answer. Each tool is an external script that lives in the skill folder:
+
+:::file-tree
+
+- +site-checker
+  - SKILL.md prompt + tool declarations
+  - check.py the check_status tool
+
+:::
+
+The manifest declares the tool and describes it to the model:
+
+```yaml
+---
+name: Site Checker
+description: Ask about any website - the LLM checks its live status and explains it.
+mode: llm
+tools:
+  - name: check_status
+    description: Check a website's live HTTP status. Returns JSON with url, status_code, response_time_ms, server.
+    command: ['python3', 'check.py']
+    parameters:
+      - name: url
+        description: URL to check (e.g. example.com)
+        required: true
+---
+You are a website status assistant. When the user asks about a site, call
+check_status with the URL, then explain the result in plain English.
+```
+
+The flow for one request:
+
+```
+user message ─▶ LLM ─▶ "call check_status(url=example.com)"
+                         │
+                  HUSK runs: python3 check.py example.com   (cwd = skill dir)
+                         │
+                  tool stdout ─▶ LLM ─▶ final plain-English answer ─▶ HTTP reply
+```
+
+The model may call tools several times; HUSK loops until it returns text or hits `max_tool_rounds`.
+
+## Tool definition
+
+| Field         | Notes                                                                           |
+| ------------- | ------------------------------------------------------------------------------- |
+| `name`        | Tool name the model calls.                                                      |
+| `description` | What the tool does and what it returns - write it for the model to read.        |
+| `command`     | Argv. `command[0]` is an interpreter on PATH or a path in the skill dir.        |
+| `parameters`  | The arguments the model fills in (each with `name`, `description`, `required`). |
+
+### How parameters become command arguments
+
+When the model calls a tool, HUSK builds the command like this:
+
+- The **first `required` parameter** is passed as a **positional** argument (`command... value`).
+- **Every other parameter** is passed as `--name value`.
+- A value that begins with `-` is **rejected** - so a model-supplied argument can never be parsed as a flag (argument-injection guard).
+
+So a tool `command: ['python3', 'check.py']` with the model calling `check_status(url="example.com")` runs:
+
+```bash
+python3 check.py example.com
+```
+
+The tool's **stdout** (exit 0) is fed back to the model; on a non-zero exit, the model receives the stderr as an error string and can react.
+
+## Choosing the model
+
+| `provider` (default `anthropic`) | Env var             | Default model               |
+| -------------------------------- | ------------------- | --------------------------- |
+| `anthropic`                      | `ANTHROPIC_API_KEY` | `claude-haiku-4-5-20251001` |
+| `openai`                         | `OPENAI_API_KEY`    | `gpt-4o-mini`               |
+| `xai`                            | `XAI_API_KEY`       | `grok-3`                    |
+| `google`                         | `GOOGLE_API_KEY`    | `gemini-2.0-flash`          |
+| `deepseek`                       | `DEEPSEEK_API_KEY`  | `deepseek-chat`             |
+
+```yaml
+---
+name: Cheap Summarizer
+description: Summarize text on a small, cheap model.
+mode: llm
+provider: openai
+model: gpt-5-mini
+max_tokens: 512
+---
+Summarize the input in 2-3 plain-text sentences.
+```
+
+| Field             | Default          | Notes                                     |
+| ----------------- | ---------------- | ----------------------------------------- |
+| `provider`        | `anthropic`      | One of the providers above.               |
+| `model`           | provider default | Any model the provider accepts.           |
+| `max_tokens`      | `4096`           | Output token cap.                         |
+| `max_tool_rounds` | `10`             | Max LLM-to-tools rounds before giving up. |
+
+The API key is read from the environment when the skill runs, so set it before serving:
+
+```bash
+ANTHROPIC_API_KEY=sk-... husk serve
+```
+
+Or put it in a `.env` file in the directory you run `husk serve` from - Bun loads it automatically:
+
+```bash
+# .env
+ANTHROPIC_API_KEY=sk-...
+```
+
+A `mode: llm` skill still **loads** without a key - it only fails (with a clear message) when invoked.
+
+:::note
+HUSK calls the provider's HTTP API directly - no provider SDK is bundled. Anthropic uses the Messages API; the others use the OpenAI-compatible chat-completions API.
+:::
+
+:::warning
+Tool scripts run with the skill folder as their working directory, and HUSK strips provider API keys (`ANTHROPIC_API_KEY`, ...) from the tool's environment so an untrusted tool script cannot read them. Each tool call is bounded by the skill's `timeout_ms`.
+:::
+
+## When to use which mode
+
+- Use **`mode: llm`** when the work is reasoning, language, or orchestration - and tools give the model live data or actions.
+- Use a **[script kernel](/skills/kernel)** when the work is deterministic - a transform, an API proxy, a file pipeline - and you do not want a model in the loop.
+
+Both are served identically over HTTP; the manifest decides which runs.

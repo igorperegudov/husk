@@ -1,0 +1,20 @@
+:root {
+  --vocs-color_brand: #2b6cb0;
+  --vocs-color_textAccent: #2b6cb0;
+}
+
+:root.dark {
+  --vocs-color_brand: #63b3ed;
+  --vocs-color_textAccent: #63b3ed;
+}
+
+/* Tighten inline code in prose a touch. */
+.vocs_Paragraph code {
+  font-size: 0.9em;
+}
+
+/* Drop Vocs's gradient scrim at the top of the sidebar (the stray band that
+   shows up under the logo). */
+[data-v-sidebar-curtain] {
+  display: none;
+}

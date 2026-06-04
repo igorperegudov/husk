@@ -1,0 +1,59 @@
+{
+  "name": "@elisymlabs/husk-core",
+  "version": "0.1.0",
+  "description": "HUSK core - turn a skill folder into an HTTP-servable kernel: manifest loader, process executor, and a Web-standard fetch handler.",
+  "keywords": [
+    "agent-skills",
+    "bun",
+    "elisymlabs",
+    "http",
+    "husk",
+    "kernel",
+    "skills"
+  ],
+  "homepage": "https://github.com/elisymlabs/husk",
+  "bugs": {
+    "url": "https://github.com/elisymlabs/husk/issues"
+  },
+  "license": "MIT",
+  "author": "elisym labs",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elisymlabs/husk.git",
+    "directory": "packages/core"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "clean": "rm -rf dist",
+    "dev": "tsup --watch",
+    "lint": "oxlint src/",
+    "qa": "tsup && vitest run && tsc --noEmit && oxlint src/ && oxfmt --check src/",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "yaml": "~2.8.3"
+  },
+  "devDependencies": {
+    "@types/node": "~22.0.0",
+    "tsup": "~8.4.0",
+    "typescript": "~5.7.0",
+    "vitest": "~3.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,0 +1,40 @@
+# What is HUSK
+
+**HTTP Universal Skill Kernel - turn a folder of agent skills into a working HTTP backend with one process.**
+
+HUSK takes a directory of skills and serves every one of them over HTTP. A skill is a folder with a `SKILL.md` manifest. Its kernel is either a **script in any language** - bash, Python, TypeScript, anything with a shebang - or an **LLM** that runs the skill and calls the tools you declare. Run one long-lived [Bun](https://bun.sh) process and every skill is a live endpoint. There is no SDK to import and nothing to rewrite: HUSK is the _husk_ that wraps your _kernel_ and publishes it as a service.
+
+```bash
+bun add -g @elisymlabs/husk
+husk init        # creates ./skills with a starter skill
+husk serve       # every skill is now an HTTP endpoint on :3000
+```
+
+```bash
+curl -X POST http://localhost:3000/skills/uppercase --data 'hello'
+# HELLO
+```
+
+## Three ideas
+
+1. **A skill is a folder, not a plugin.** The format is compatible with Agent Skills (Claude Code, Codex, Cursor): one `SKILL.md` manifest, any language. Existing skill folders - including [elisym](https://docs.elisym.network) agents - serve unchanged.
+2. **A script, or an LLM with tools.** A skill is a script you wrote, or `mode: llm` - where an LLM runs the skill using the `SKILL.md` body as its system prompt and calls the [tools](/skills/llm) you declare. Same folder, same HTTP surface.
+3. **One long-lived node on Bun.** Start the server and every skill is reachable over HTTP. The _same_ folder also runs as a one-shot serverless function or inside a container with no redesign.
+
+## What HUSK is not
+
+- Not a framework you code against - there is no SDK, no base class, no decorator. A skill is data plus a kernel.
+- Not a model host - for `mode: llm` skills HUSK calls your chosen provider with your API key; it bundles no model and no provider SDK.
+- Not a marketplace - HUSK is the HTTP shell. Discovery, payments, and identity live in protocols like [elisym](https://docs.elisym.network), not here.
+
+## Pick your path
+
+:::tip
+New here? Read [How it works](/how-it-works) for the end-to-end picture, then jump to the path that fits you.
+:::
+
+- **Build a skill** - start with the [anatomy of a skill](/skills/anatomy), then a [script kernel](/skills/kernel) or an [LLM skill with tools](/skills/llm).
+- **Serve & deploy** - run the [HTTP server](/serve/http), then ship the same skills as [a function or a container](/serve/runtimes).
+- **Embed the engine** - drive the loader and the fetch handler yourself with the [`husk-core` library](/library).
+
+> Reading this as an automated agent? The docs expose an MCP source - use the "Ask AI" button, or fetch `/llms-full.txt` for the full text.

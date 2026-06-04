@@ -1,0 +1,71 @@
+# The HTTP server
+
+`husk serve` starts one long-lived Bun process that loads your skills and answers HTTP requests. This is the default way to run HUSK.
+
+```bash
+husk serve              # serves ./skills (or .) on :3000
+husk serve ./skills     # explicit directory
+husk serve --watch      # reload skills when files change
+```
+
+On startup it prints the routes it is serving:
+
+```
+  HUSK serving 4 skill(s)
+  from /…/skills
+
+  POST   /skills/site-status     Site Status
+  POST   /skills/uppercase       Uppercase
+  POST   /skills/utc-now         UTC Now
+  POST   /skills/welcome         Welcome
+
+  → http://localhost:3000
+```
+
+## Options
+
+| Flag                    | Default       | Notes                                               |
+| ----------------------- | ------------- | --------------------------------------------------- |
+| `-p, --port <port>`     | `3000`        | Port to listen on. Falls back to `$HUSK_PORT`.      |
+| `-H, --host <host>`     | `0.0.0.0`     | Address to bind.                                    |
+| `-w, --watch`           | off           | Reload skills when files in the directory change.   |
+| `--no-cors`             | CORS on       | Disable the permissive CORS headers.                |
+| `-c, --concurrency <n>` | `0`           | Max concurrent kernel invocations. `0` = unlimited. |
+| `-n, --name <name>`     | `HUSK skills` | Service name shown on the index and in OpenAPI.     |
+
+## Endpoints
+
+Every server exposes the same fixed routes alongside your skills:
+
+| Method & path       | What                              |
+| ------------------- | --------------------------------- |
+| `GET /`             | HTML index of skills              |
+| `GET /skills`       | JSON array of skill cards         |
+| `GET /skills/:slug` | one skill card                    |
+| `GET /openapi.json` | generated OpenAPI 3.1 spec        |
+| `GET /healthz`      | `{ "status": "ok", "skills": N }` |
+| `<method> <route>`  | invoke a skill                    |
+
+The full request/response details are in the [HTTP API reference](/reference/http-api).
+
+## Request bodies
+
+Invoke endpoints accept input several ways, so any client works:
+
+- `text/plain` - the body is the text input.
+- `application/json` - a bare string, `{ "input": "..." }`, or the raw body.
+- `multipart/form-data` - the first file part is the file input; a `text`/`input`/`prompt` field is the accompanying text.
+- raw binary - for `file`-input skills with any other content type.
+- `GET` query - the `input`, `q`, or `text` parameter.
+
+## Concurrency and limits
+
+By default kernels run as fast as requests arrive. Set `--concurrency` to cap how many run at once - useful for heavy kernels (image, audio, model calls) so a burst of requests does not exhaust the machine. Captured output is bounded and every kernel has a `timeout_ms` deadline.
+
+:::warning
+HUSK does not authenticate or rate-limit by default, and kernels run with the server's full environment (including any API keys you set). Only serve skills you trust, and put an auth layer in front - either by [embedding the engine](/library) with an `auth` hook, or fronting `husk serve` with a gateway.
+:::
+
+## Hot reload
+
+`--watch` re-scans the skills directory on change and swaps in the new set without dropping the process. Edit a kernel, save, and the next request uses the new code. New skill folders are picked up; broken ones are reported and skipped.

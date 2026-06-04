@@ -1,0 +1,69 @@
+# Library (husk-core)
+
+The CLI is a thin shell over [`@elisymlabs/husk-core`](https://www.npmjs.com/package/@elisymlabs/husk-core), the engine. Use the library directly when you want to embed the server, add authentication, or invoke skills in-process.
+
+```bash
+bun add @elisymlabs/husk-core
+```
+
+## Serve skills over HTTP
+
+`createFetchHandler` returns a Web-standard `(Request) => Promise<Response>`, so it runs under Bun, Deno, Cloudflare Workers, or a Node adapter.
+
+```ts
+import { loadSkills, createFetchHandler } from '@elisymlabs/husk-core';
+
+const { skills, errors } = loadSkills('./skills');
+errors.forEach((e) => console.warn(`skipped ${e.dir}: ${e.message}`));
+
+const handler = createFetchHandler({
+  skills,
+  serviceName: 'My Agent',
+  cors: true,
+  concurrency: 8, // cap concurrent kernels (0 = unlimited)
+  auth: (req) => req.headers.get('authorization') === `Bearer ${process.env.TOKEN}`,
+});
+
+Bun.serve({ port: 3000, fetch: handler });
+```
+
+### `HuskServerOptions`
+
+| Option         | Default       | Notes                                                       |
+| -------------- | ------------- | ----------------------------------------------------------- |
+| `skills`       | -             | The loaded skills to serve.                                 |
+| `serviceName`  | `HUSK skills` | Shown on the index page and in OpenAPI.                     |
+| `cors`         | `true`        | Emit permissive CORS headers.                               |
+| `maxBodyBytes` | `52428800`    | Reject larger request bodies (50 MB).                       |
+| `concurrency`  | `0`           | Max concurrent kernel invocations. `0` = unlimited.         |
+| `auth`         | -             | `(req) => boolean \| Promise<boolean>`. Return false → 401. |
+
+## Invoke a skill in-process
+
+```ts
+import { loadSkill, invokeSkill } from '@elisymlabs/husk-core';
+
+const skill = loadSkill('./skills/uppercase');
+const result = await invokeSkill(skill, { text: 'hello' });
+console.log(result.ok, result.stdout); // true "HELLO"
+await result.cleanup(); // always clean up temp files
+```
+
+`invokeSkill` returns a structured `InvokeResult`: `{ ok, stdout, stderr, exitCode, timedOut, outputKind, files, durationMs, cleanup }`.
+
+## API surface
+
+| Export                               | Purpose                                             |
+| ------------------------------------ | --------------------------------------------------- |
+| `loadSkills(dir)` / `loadSkill(dir)` | Discover and parse skills from disk.                |
+| `parseManifest` / `parseFrontmatter` | The SKILL.md parser.                                |
+| `invokeSkill(skill, input, opts)`    | Run a kernel; returns an `InvokeResult`.            |
+| `kernelErrorMessage(result)`         | A human-readable explanation for a failed result.   |
+| `runProcess(cmd, args, opts)`        | The hardened child-process runner.                  |
+| `createFetchHandler(options)`        | The HTTP handler (routing, SSE, files, CORS, auth). |
+| `generateOpenApi(skills, opts)`      | Build an OpenAPI 3.1 document.                      |
+| `toCard(skill)` / `mimeFromPath`     | Small helpers.                                      |
+
+## Types
+
+The package ships full TypeScript types - `Skill`, `SkillManifest`, `InvokeInput`, `InvokeResult`, `SkillCard`, and more. Everything is strict, ESM, and dependency-light (only a YAML parser at runtime).

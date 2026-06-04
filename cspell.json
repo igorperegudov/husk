@@ -1,0 +1,23 @@
+{
+  "$schema": "https://raw.githubusercontent.com/streetsidesoftware/cspell/main/cspell.schema.json",
+  "version": "0.2",
+  "language": "en",
+  "dictionaryDefinitions": [
+    {
+      "name": "husk-dictionary",
+      "path": "./cspell-dictionary.txt",
+      "addWords": true
+    }
+  ],
+  "dictionaries": ["husk-dictionary", "node", "npm", "softwareTerms", "typescript"],
+  "ignorePaths": [
+    "/.git",
+    "/dist",
+    "/build",
+    "/node_modules",
+    "/bun.lock",
+    "/.turbo",
+    "**/*.json",
+    "**/examples/**"
+  ]
+}

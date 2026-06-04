@@ -1,0 +1,74 @@
+# Proxy skills
+
+A skill can be a thin reverse-proxy to an upstream HTTP endpoint - no script, no LLM. With `mode: proxy`, HUSK forwards the incoming request to the target you declare and passes the upstream response straight back. Headers you declare are resolved against the server's environment, so a secret like an API key lives server-side and is never exposed to the client.
+
+This is the shape of a **paid model proxy**: put your own auth, billing, or rate limiting in front of `husk serve`, and wrap any HTTP-callable API behind a clean endpoint.
+
+## Example
+
+```yaml
+---
+name: Anthropic Proxy
+description: Forward chat requests to Anthropic, injecting the API key server-side.
+mode: proxy
+proxy: https://api.anthropic.com/v1/messages
+headers:
+  x-api-key: ${ANTHROPIC_API_KEY}
+  anthropic-version: '2023-06-01'
+  content-type: application/json
+---
+```
+
+```sh
+ANTHROPIC_API_KEY=sk-... husk serve
+curl -X POST http://localhost:3000/skills/anthropic-proxy \
+  -H 'content-type: application/json' \
+  -d '{"model":"claude-haiku-4-5-20251001","max_tokens":128,"messages":[{"role":"user","content":"hi"}]}'
+```
+
+The client sends a normal request; HUSK adds `x-api-key` from the environment and forwards everything to Anthropic. The key never leaves the server.
+
+## Fields
+
+| Field             | Default           | Notes                                                          |
+| ----------------- | ----------------- | -------------------------------------------------------------- |
+| `proxy`           | - (required)      | Upstream URL (`http://` or `https://`). Sets `mode: proxy`.    |
+| `headers`         | -                 | Headers to send upstream. Values may use `${VAR}` (see below). |
+| `forward_headers` | -                 | Incoming header names to pass through to the upstream.         |
+| `proxy_method`    | invocation method | Override the upstream HTTP method (e.g. always `POST`).        |
+| `timeout_ms`      | `60000`           | Upstream request timeout.                                      |
+
+## What gets forwarded
+
+- **Method** - the upstream is called with the same method the skill was invoked with, unless `proxy_method` overrides it.
+- **Body** - the request body is streamed straight to the upstream (no buffering), so large uploads and streaming responses pass through intact.
+- **Query string** - appended to the upstream URL.
+- **Content-Type** - the incoming `content-type` is forwarded.
+- **Declared `headers`** - added (and override the above). `${VAR}` is replaced with the environment variable's value at request time; a missing variable is a `502`.
+- **`forward_headers`** - any incoming headers you explicitly whitelist (e.g. `Accept`).
+
+Other incoming headers (cookies, host, authorization) are **not** forwarded unless whitelisted - so client credentials never leak to the upstream by accident.
+
+## What comes back
+
+The upstream's **status code**, **content-type**, and **body** are passed back to the caller verbatim - including streaming bodies (Server-Sent Events from a model API stream straight through). HUSK adds CORS headers and `x-husk-duration-ms`.
+
+## Env interpolation
+
+```yaml
+headers:
+  authorization: Bearer ${OPENAI_API_KEY}
+  x-api-key: ${SOME_SECRET}
+```
+
+`${NAME}` is substituted from the server's environment when the request runs - so rotating a key is just a restart with a new env value, and the secret is never in the manifest or visible to clients.
+
+:::warning
+A proxy skill spends whatever the upstream charges and exposes whatever it does. An unauthenticated public proxy lets anyone use your upstream key - gate it behind `auth` (when [embedding](/library)) or a gateway, and only forward the headers you intend.
+:::
+
+## When to use it
+
+- **Wrap a third-party API** behind your own endpoint, injecting credentials server-side.
+- **Front a model API** (Anthropic, OpenAI, ...) so callers hit your URL, not the provider's, and you control access.
+- Reach for an [LLM skill](/skills/llm) instead when you want HUSK to _drive_ the model and tools; reach for a [script kernel](/skills/kernel) when you need to transform the request or response.

@@ -1,0 +1,74 @@
+# Anatomy of a skill
+
+A **skill** is what HUSK serves. Each one is a folder containing a `SKILL.md` manifest and, in almost every case, a script - the kernel. HUSK loads every such folder under your skills directory and turns each into an HTTP endpoint.
+
+:::file-tree
+
+- +skills
+  - +uppercase this folder is one skill
+    - SKILL.md the manifest
+    - upper.sh the kernel
+  - +site-status
+    - SKILL.md
+    - site_status.py
+
+:::
+
+:::note
+HUSK discovers skills in the **immediate subdirectories** of the skills folder. If the skills folder itself contains a `SKILL.md`, it is treated as a single-skill project.
+:::
+
+## The two files
+
+A skill is data plus a script:
+
+- **`SKILL.md`** - YAML frontmatter that declares how the skill runs, followed by a free Markdown body. The body is documentation (and keeps the file a valid Agent Skill); HUSK only reads the frontmatter. See [The manifest](/skills/manifest).
+- **The kernel** - any executable: a shell script, a Python file, a Bun script, a compiled binary. It follows the [kernel I/O contract](/skills/kernel) and nothing else.
+
+```yaml
+# skills/uppercase/SKILL.md
+---
+name: Uppercase
+description: Send any text, get it back in upper case.
+run: ./upper.sh # the kernel - any executable, any language
+input: text # text | file | none   (default: text)
+output: text # text | json | file   (default: text)
+---
+The body is Markdown docs. It is shown in the skill card and ignored at runtime.
+```
+
+```bash
+# skills/uppercase/upper.sh
+#!/bin/sh
+exec tr 'a-z' 'A-Z'
+```
+
+That is the entire skill. There is no server code, no SDK import, no framework.
+
+## Slug and route
+
+The skill's **slug** is the kebab-cased manifest `name` (falling back to the folder name). It determines the default route, `/skills/<slug>`, and the id used by `husk call`. So `name: Uppercase` is reachable at `POST /skills/uppercase`.
+
+You can override the path and verb in the manifest with `route` and `method`.
+
+## A static skill
+
+A skill does not have to run anything. With `serve:` and no `run:`, HUSK returns a file's contents directly - useful for fixed docs, canned manifests, or health text:
+
+```yaml
+---
+name: Welcome
+description: Returns a fixed welcome message.
+serve: ./welcome.md
+---
+```
+
+## Scaffold one
+
+The CLI writes a working skill for you in bash, Python, or TypeScript:
+
+```bash
+husk new my-skill --lang python
+```
+
+Next: [the manifest reference](/skills/manifest) and [the kernel I/O contract](/skills/kernel).
