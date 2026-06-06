@@ -18,3 +18,6 @@ bun.lock
 .vocs/
 packages/docs/cache/
 packages/docs/pages.gen.ts
+
+# deepsec security scanner (scaffold, local findings data, and .env.local with keys)
+.deepsec/
