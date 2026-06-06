@@ -19,9 +19,9 @@ program
   .argument('[dir]', 'skills directory (default: ./skills, else .)')
   .description('Serve a folder of skills over HTTP with one long-lived Bun process')
   .option('-p, --port <port>', 'port to listen on (default 3000, or $HUSK_PORT)')
-  .option('-H, --host <host>', 'host to bind (default 0.0.0.0)')
+  .option('-H, --host <host>', 'host to bind (default 127.0.0.1; use 0.0.0.0 to expose off-host)')
   .option('-w, --watch', 'reload skills when files change')
-  .option('--no-cors', 'disable permissive CORS headers')
+  .option('--cors', 'enable permissive CORS headers (off by default)')
   .option('-c, --concurrency <n>', 'max concurrent invocations (0 = unlimited)')
   .option('-n, --name <name>', 'service name shown on the index page')
   .action((dir, opts) => serveCommand(dir, opts));

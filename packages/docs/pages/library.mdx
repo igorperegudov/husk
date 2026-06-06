@@ -19,7 +19,7 @@ errors.forEach((e) => console.warn(`skipped ${e.dir}: ${e.message}`));
 const handler = createFetchHandler({
   skills,
   serviceName: 'My Agent',
-  cors: true,
+  cors: true, // off by default; safe to enable here because `auth` is set
   concurrency: 8, // cap concurrent kernels (0 = unlimited)
   auth: (req) => req.headers.get('authorization') === `Bearer ${process.env.TOKEN}`,
 });
@@ -29,14 +29,15 @@ Bun.serve({ port: 3000, fetch: handler });
 
 ### `HuskServerOptions`
 
-| Option         | Default       | Notes                                                       |
-| -------------- | ------------- | ----------------------------------------------------------- |
-| `skills`       | -             | The loaded skills to serve.                                 |
-| `serviceName`  | `HUSK skills` | Shown on the index page and in OpenAPI.                     |
-| `cors`         | `true`        | Emit permissive CORS headers.                               |
-| `maxBodyBytes` | `52428800`    | Reject larger request bodies (50 MB).                       |
-| `concurrency`  | `0`           | Max concurrent kernel invocations. `0` = unlimited.         |
-| `auth`         | -             | `(req) => boolean \| Promise<boolean>`. Return false → 401. |
+| Option         | Default       | Notes                                                                      |
+| -------------- | ------------- | -------------------------------------------------------------------------- |
+| `skills`       | -             | The loaded skills to serve.                                                |
+| `serviceName`  | `HUSK skills` | Shown on the index page and in OpenAPI.                                    |
+| `cors`         | `false`       | Emit permissive CORS headers (`*`). Opt in for cross-origin browser reads. |
+| `maxBodyBytes` | `52428800`    | Reject larger request bodies (50 MB).                                      |
+| `concurrency`  | `0`           | Max concurrent kernel invocations. `0` = unlimited.                        |
+| `allowedHosts` | -             | Allowlist of `Host` hostnames (anti-DNS-rebinding). Unset = any host.      |
+| `auth`         | -             | `(req) => boolean \| Promise<boolean>`. Return false → 401.                |
 
 ## Invoke a skill in-process
 

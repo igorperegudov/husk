@@ -26,6 +26,7 @@ export {
   ManifestError,
   parseFrontmatter,
   parseManifest,
+  stripControlChars,
   toSlug,
   DEFAULT_MAX_TOKENS,
   DEFAULT_MAX_TOOL_ROUNDS,

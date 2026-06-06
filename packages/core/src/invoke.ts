@@ -240,6 +240,7 @@ async function invokeProxy(
         headers: { 'content-type': contentType },
         body: text,
         signal: options.signal,
+        timeoutMs: skill.manifest.timeoutMs,
       },
       { ...process.env, ...options.env },
     );

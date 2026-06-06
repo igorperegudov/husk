@@ -63,13 +63,14 @@ export async function callCommand(name: string, opts: CallOptions): Promise<void
   }
 
   const result = await invokeSkill(skill, input);
+  // Capture failure rather than exiting inside the try: `fail()` calls
+  // process.exit, which would skip the `finally` and leak the temp output dir.
+  let failMessage: string | undefined;
   try {
     if (!result.ok) {
       process.stderr.write(result.stderr);
-      fail(kernelErrorMessage(result));
-    }
-
-    if (result.outputKind === 'file') {
+      failMessage = kernelErrorMessage(result);
+    } else if (result.outputKind === 'file') {
       const outDir = opts.out ? resolve(opts.out) : process.cwd();
       const written: string[] = [];
       for (const file of result.files) {
@@ -89,5 +90,8 @@ export async function callCommand(name: string, opts: CallOptions): Promise<void
     }
   } finally {
     await result.cleanup();
+  }
+  if (failMessage) {
+    fail(failMessage);
   }
 }

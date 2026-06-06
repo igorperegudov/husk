@@ -94,4 +94,6 @@ Add `?stream=1` or `Accept: text/event-stream` to a `text`/`json` invocation to 
 
 ## CORS
 
-Permissive CORS headers are sent by default (disable with `--no-cors`, or `cors: false` when embedding). `OPTIONS` preflight requests are answered with `204`.
+CORS headers are **off by default** - both for `husk serve` (enable with `--cors`) and for `createFetchHandler` (pass `cors: true`) - so a page the operator visits can't read skill responses cross-origin. Only enable CORS together with `auth`. `OPTIONS` preflight requests are answered with `204`.
+
+On a loopback bind, `husk serve` also pins the `Host` header to `localhost`/`127.0.0.1`/`::1` (rejecting others with `403`) to defeat DNS rebinding. When embedding, set `allowedHosts` to opt in.

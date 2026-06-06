@@ -221,7 +221,7 @@ errors.forEach((e) => console.warn(`skipped ${e.dir}: ${e.message}`));
 const fetch = createFetchHandler({
   skills,
   serviceName: 'My Agent',
-  cors: true,
+  cors: true, // off by default; safe to enable here because `auth` is set
   concurrency: 8, // cap concurrent kernels (0 = unlimited)
   auth: (req) => req.headers.get('authorization') === `Bearer ${process.env.TOKEN}`,
 });

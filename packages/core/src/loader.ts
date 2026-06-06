@@ -1,10 +1,14 @@
-import { chmodSync, constants, readdirSync, readFileSync, statSync } from 'node:fs';
-import { isAbsolute, join, resolve } from 'node:path';
+import { chmodSync, constants, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { isAbsolute, join, resolve, sep } from 'node:path';
 import { ManifestError, parseFrontmatter, parseManifest, toSlug } from './manifest';
 import type { Skill } from './types';
 
 /** Names that look like a skills root rather than a single skill. */
 const SKILL_MANIFEST = 'SKILL.md';
+
+/** Built-in endpoints an explicit `route:` must not shadow (server matches
+ * invoke routes before these, so a collision silently hijacks them). */
+const RESERVED_ROUTES = new Set(['/', '/healthz', '/skills', '/openapi.json']);
 
 export interface LoadOptions {
   /**
@@ -29,14 +33,23 @@ function isLocalScript(arg: string): boolean {
 function ensureExecutable(skillDir: string, arg: string): void {
   const target = isAbsolute(arg) ? arg : resolve(skillDir, arg);
   try {
-    const st = statSync(target);
+    // Resolve symlinks before deciding: a lexical check alone is defeated by a
+    // `./run.sh -> /etc/...` symlink, since statSync/chmodSync follow symlinks.
+    // Only ever flip the execute bit on a real file inside the skill folder, so
+    // a hostile SKILL.md can't chmod a file outside its own directory.
+    const realRoot = realpathSync(skillDir);
+    const realTarget = realpathSync(target);
+    if (realTarget !== realRoot && !realTarget.startsWith(realRoot + sep)) {
+      return;
+    }
+    const st = statSync(realTarget);
     if (!st.isFile()) {
       return;
     }
     // Add owner-execute if missing; ignore failures (read-only mounts, etc.).
-    chmodSync(target, st.mode | constants.S_IXUSR);
+    chmodSync(realTarget, st.mode | constants.S_IXUSR);
   } catch {
-    // Missing file is reported later at invoke time with a clear error.
+    // Missing/unresolvable file is reported later at invoke time with an error.
   }
 }
 
@@ -81,6 +94,7 @@ export function loadSkills(skillsDir: string, options: LoadOptions = {}): LoadRe
   const skills: Skill[] = [];
   const errors: Array<{ dir: string; message: string }> = [];
   const seen = new Map<string, string>();
+  const seenRoutes = new Map<string, string>();
 
   const candidates: string[] = [];
   // A SKILL.md at the root means `skillsDir` is itself a single skill.
@@ -117,7 +131,23 @@ export function loadSkills(skillsDir: string, options: LoadOptions = {}): LoadRe
           `duplicate skill slug "${skill.slug}" (already defined by ${clash})`,
         );
       }
+      if (RESERVED_ROUTES.has(skill.manifest.route)) {
+        throw new ManifestError(
+          `skill route "${skill.manifest.route}" collides with a built-in endpoint`,
+        );
+      }
+      // Two skills can have distinct slugs yet the same invoke route (explicit
+      // `route:`, or folder names that slugify alike); the server would silently
+      // overwrite one with the other, so reject the collision up front.
+      const routeKey = `${skill.manifest.method} ${skill.manifest.route}`;
+      const routeClash = seenRoutes.get(routeKey);
+      if (routeClash) {
+        throw new ManifestError(
+          `duplicate skill route "${routeKey}" (already defined by ${routeClash})`,
+        );
+      }
       seen.set(skill.slug, dir);
+      seenRoutes.set(routeKey, dir);
       skills.push(skill);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

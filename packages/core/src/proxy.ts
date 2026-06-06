@@ -18,6 +18,26 @@ export interface ProxyInit {
   /** Query string to append to the upstream URL, including the leading `?`. */
   query?: string;
   signal?: AbortSignal;
+  /** Hard upstream timeout (ms); aborts the fetch, combined with `signal`. */
+  timeoutMs?: number;
+}
+
+/** Combine an optional caller signal with an optional hard timeout. */
+function combineSignals(
+  signal: AbortSignal | undefined,
+  timeoutMs: number | undefined,
+): AbortSignal | undefined {
+  const signals: AbortSignal[] = [];
+  if (signal) {
+    signals.push(signal);
+  }
+  if (timeoutMs && timeoutMs > 0) {
+    signals.push(AbortSignal.timeout(timeoutMs));
+  }
+  if (signals.length === 0) {
+    return undefined;
+  }
+  return signals.length === 1 ? signals[0] : AbortSignal.any(signals);
 }
 
 /** Substitute `${VAR}` references with environment values; throw if unset. */
@@ -74,8 +94,14 @@ export async function proxyRequest(
   const fetchInit: RequestInit & { duplex?: 'half' } = {
     method,
     headers,
-    redirect: 'follow',
-    signal: init.signal,
+    // Never auto-follow: a `${VAR}`-injected secret header (e.g. `x-api-key`)
+    // is NOT stripped by fetch on a cross-origin redirect the way `Authorization`
+    // is, so following the upstream's redirect would exfiltrate the key to a host
+    // it chose. We hand any 3xx back to the client to follow without our secrets.
+    redirect: 'manual',
+    // Bound by the manifest timeout (like a kernel) so a hung upstream can't
+    // pin the request - and its concurrency slot - until the socket idles out.
+    signal: combineSignals(init.signal, init.timeoutMs),
   };
   if (hasBody) {
     fetchInit.body = init.body;
@@ -92,6 +118,16 @@ export async function proxyRequest(
     );
   }
 
+  // With `redirect: 'manual'` a runtime may surface a redirect as an opaque
+  // response (type `opaqueredirect`, status 0). We cannot - and must not -
+  // replay the injected secret headers to follow it, so refuse it explicitly.
+  if (upstream.type === 'opaqueredirect' || upstream.status === 0) {
+    throw new ProxyError(
+      `upstream ${spec.url} returned a redirect, which husk does not follow ` +
+        `(injected secret headers must not be replayed cross-origin)`,
+    );
+  }
+
   const outHeaders = new Headers();
   const upstreamType = upstream.headers.get('content-type');
   if (upstreamType) {
@@ -100,6 +136,12 @@ export async function proxyRequest(
   const disposition = upstream.headers.get('content-disposition');
   if (disposition) {
     outHeaders.set('content-disposition', disposition);
+  }
+  // Pass a visible 3xx's Location through so the client can follow it itself,
+  // with its own credentials, never ours.
+  const location = upstream.headers.get('location');
+  if (location) {
+    outHeaders.set('location', location);
   }
   return new Response(upstream.body, {
     status: upstream.status,

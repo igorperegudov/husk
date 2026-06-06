@@ -19,14 +19,14 @@ curl -X POST localhost:3000/skills/hello --data 'world'
 
 ## Commands
 
-| Command                     | Description                                                                                                            |
-| --------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `husk serve [dir]`          | Serve a folder of skills over HTTP. `--watch` hot-reloads, `--port`, `--host`, `--concurrency`, `--no-cors`, `--name`. |
-| `husk list [dir]`           | List discovered skills (`--json` for machine output).                                                                  |
-| `husk call <name>`          | Invoke a skill locally without HTTP. `-i/--input` (`-` = stdin, `@file` = file), `-f/--file`, `-o/--out`, `-d/--dir`.  |
-| `husk new <name>`           | Scaffold a skill. `-l/--lang bash\|python\|ts`, `-d/--dir`.                                                            |
-| `husk init [dir]`           | Create a project with a `./skills` folder and a starter skill.                                                         |
-| `husk build [dir] --docker` | Emit a Dockerfile so the same skills run in a container.                                                               |
+| Command                     | Description                                                                                                           |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `husk serve [dir]`          | Serve a folder of skills over HTTP. `--watch` hot-reloads, `--port`, `--host`, `--concurrency`, `--cors`, `--name`.   |
+| `husk list [dir]`           | List discovered skills (`--json` for machine output).                                                                 |
+| `husk call <name>`          | Invoke a skill locally without HTTP. `-i/--input` (`-` = stdin, `@file` = file), `-f/--file`, `-o/--out`, `-d/--dir`. |
+| `husk new <name>`           | Scaffold a skill. `-l/--lang bash\|python\|ts`, `-d/--dir`.                                                           |
+| `husk init [dir]`           | Create a project with a `./skills` folder and a starter skill.                                                        |
+| `husk build [dir] --docker` | Emit a Dockerfile so the same skills run in a container.                                                              |
 
 ## A skill is a folder
 

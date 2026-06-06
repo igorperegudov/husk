@@ -95,12 +95,43 @@ export function parseFrontmatter(content: string): {
   return { frontmatter: frontmatter as Record<string, unknown>, body: (match[2] ?? '').trim() };
 }
 
+/**
+ * Strip C0/C1 control characters (including the ANSI ESC byte, 0x1b) from a
+ * single-line manifest string. These have no legitimate place in a name,
+ * description, or route; left intact, a hostile SKILL.md could inject terminal
+ * escape sequences that execute when the field is printed (`husk list`/`serve`)
+ * or break out of a header/HTML context downstream.
+ */
+export function stripControlChars(value: string): string {
+  let out = '';
+  for (const ch of value) {
+    const code = ch.codePointAt(0) ?? 0;
+    const isControl = code <= 0x1f || (code >= 0x7f && code <= 0x9f);
+    if (!isControl) {
+      out += ch;
+    }
+  }
+  return out;
+}
+
+/**
+ * Sanitize a manifest MIME value. `output_mime` becomes the `content-type`
+ * response header for file output, so a stray CR/LF would otherwise allow
+ * response-header injection. Empty-after-strip collapses to undefined.
+ */
+function sanitizeMime(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  return stripControlChars(value.trim()) || undefined;
+}
+
 function requireString(fm: Record<string, unknown>, key: string): string {
   const value = fm[key];
   if (typeof value !== 'string' || value.trim() === '') {
     throw new ManifestError(`SKILL.md: \`${key}\` is required and must be a non-empty string`);
   }
-  return value.trim();
+  return stripControlChars(value.trim());
 }
 
 /**
@@ -309,7 +340,14 @@ export function parseManifest(content: string, slug: string): SkillManifest {
   }
   const argv = mode === 'script' ? toArgv(runValue, runSource) : [];
   const serveFile =
-    mode === 'static-file' && typeof serveValue === 'string' ? serveValue : undefined;
+    mode === 'static-file' && typeof serveValue === 'string' ? serveValue.trim() : undefined;
+  if (mode === 'static-file' && !serveFile) {
+    // Caught here rather than crashing at invoke when `resolveInside` gets a
+    // non-string path (e.g. `mode: static-file` with a numeric `output_file`).
+    throw new ManifestError(
+      'SKILL.md: a `static-file` skill needs `serve` (or `output_file`) set to a non-empty file path',
+    );
+  }
 
   let llm: LlmSpec | undefined;
   if (mode === 'llm') {
@@ -331,8 +369,8 @@ export function parseManifest(content: string, slug: string): SkillManifest {
 
   const proxy = mode === 'proxy' ? parseProxy(fm) : undefined;
 
-  const inputMime = typeof fm.input_mime === 'string' ? fm.input_mime : undefined;
-  const outputMime = typeof fm.output_mime === 'string' ? fm.output_mime : undefined;
+  const inputMime = sanitizeMime(fm.input_mime);
+  const outputMime = sanitizeMime(fm.output_mime);
 
   // Resolve input kind: explicit field, then elisym mode/mime heuristics.
   let input = coerceEnum<SkillInputKind>(fm.input, INPUT_KINDS, 'input');
@@ -373,9 +411,18 @@ export function parseManifest(content: string, slug: string): SkillManifest {
 
   const method = coerceEnum<HttpMethod>(fm.method, HTTP_METHODS, 'method') ?? 'POST';
 
-  let route = typeof fm.route === 'string' && fm.route.trim() ? fm.route.trim() : `/skills/${slug}`;
+  let route =
+    typeof fm.route === 'string' && fm.route.trim()
+      ? stripControlChars(fm.route.trim())
+      : `/skills/${slug}`;
   if (!route.startsWith('/')) {
     route = `/${route}`;
+  }
+  // Normalize trailing slashes so `/healthz/` can't slip past the reserved-route
+  // and duplicate checks yet collapse to `/healthz` at request time (the server
+  // strips them).
+  if (route.length > 1) {
+    route = route.replace(/\/+$/, '') || '/';
   }
 
   const extra: Record<string, unknown> = {};

@@ -178,7 +178,7 @@ describe('createFetchHandler (proxy)', () => {
     );
 
     const { skills } = loadSkills(root);
-    const handler = createFetchHandler({ skills });
+    const handler = createFetchHandler({ skills, cors: true });
     const res = await handler(
       new Request('http://h/skills/ping', { method: 'POST', body: 'ping' }),
     );

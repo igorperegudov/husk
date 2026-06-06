@@ -12,12 +12,23 @@ export interface HuskServerOptions {
   /** Service name shown on the index page and in OpenAPI. */
   serviceName?: string;
   version?: string;
-  /** Emit permissive CORS headers. Default true. */
+  /**
+   * Emit permissive CORS headers (`Access-Control-Allow-Origin: *`). Default
+   * false - opt in only when a browser app on another origin must read
+   * responses, since with no auth it lets any page do so.
+   */
   cors?: boolean;
   /** Reject request bodies larger than this many bytes. Default 50 MB. */
   maxBodyBytes?: number;
   /** Max concurrent kernel invocations. 0 (default) means unlimited. */
   concurrency?: number;
+  /**
+   * If set, the request `Host` header's hostname must be one of these (port
+   * ignored). Rejects others with 403. Defeats DNS rebinding against a
+   * loopback bind - a page on evil.com that rebinds to 127.0.0.1 still sends
+   * `Host: evil.com`. Leave unset when a gateway/proxy already fixes the Host.
+   */
+  allowedHosts?: string[];
   /**
    * Per-request gate. Return false to reject with 401. Runs before any kernel
    * is spawned. Use it for API keys, bearer tokens, etc.
@@ -127,6 +138,17 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
+/** Extract the bare hostname from a `Host` header (strip the port; unwrap IPv6). */
+function hostName(hostHeader: string): string {
+  const h = hostHeader.trim().toLowerCase();
+  if (h.startsWith('[')) {
+    const end = h.indexOf(']');
+    return end === -1 ? h : h.slice(1, end);
+  }
+  const colon = h.indexOf(':');
+  return colon === -1 ? h : h.slice(0, colon);
+}
+
 /** Collapse CR/LF (illegal in HTTP header values) to spaces; trim and cap. */
 function singleLineHeader(value: string, max: number): string {
   return value
@@ -186,6 +208,47 @@ function assertBodyWithinLimit(req: Request, max: number): void {
   }
 }
 
+/**
+ * Read the full request body, aborting once it exceeds `max` bytes. Unlike the
+ * `content-length` check (which a chunked or header-spoofing client bypasses),
+ * this counts the bytes actually delivered, so memory use is truly bounded.
+ */
+async function readBodyCapped(req: Request, max: number): Promise<Uint8Array> {
+  const body = req.body;
+  if (!body) {
+    const buf = new Uint8Array(await req.arrayBuffer());
+    if (buf.byteLength > max) {
+      throw new HttpError(413, `request body exceeds ${max} bytes`);
+    }
+    return buf;
+  }
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    total += value.byteLength;
+    if (total > max) {
+      await reader.cancel().catch(() => {});
+      throw new HttpError(413, `request body exceeds ${max} bytes`);
+    }
+    chunks.push(value);
+  }
+  if (chunks.length === 1) {
+    return chunks[0];
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return out;
+}
+
 /** Stage an uploaded blob to a temp dir; returns the file path and its dir. */
 async function stageFile(
   bytes: ArrayBuffer | Uint8Array,
@@ -222,7 +285,14 @@ async function readInput(
   const contentType = req.headers.get('content-type') ?? '';
 
   if (contentType.includes('multipart/form-data')) {
-    const form = await req.formData();
+    // Buffer the multipart body through the byte cap before parsing, so a
+    // chunked or content-length-spoofing upload cannot exhaust memory here the
+    // way a direct `req.formData()` (unbounded) would.
+    const form = await new Request(req.url, {
+      method: 'POST',
+      headers: { 'content-type': contentType },
+      body: await readBodyCapped(req, max),
+    }).formData();
     let file: InvokeInput['file'];
     let stagedDir: string | undefined;
     for (const [, value] of form.entries()) {
@@ -240,7 +310,7 @@ async function readInput(
   }
 
   if (contentType.includes('application/json')) {
-    const raw = await req.text();
+    const raw = new TextDecoder().decode(await readBodyCapped(req, max));
     let text = raw;
     try {
       const parsed: unknown = JSON.parse(raw);
@@ -260,7 +330,7 @@ async function readInput(
   }
 
   if (skill.manifest.input === 'file') {
-    const bytes = await req.arrayBuffer();
+    const bytes = await readBodyCapped(req, max);
     const staged = await stageFile(bytes, 'input');
     return {
       input: { file: { path: staged.path, mime: contentType || undefined } },
@@ -268,7 +338,7 @@ async function readInput(
     };
   }
 
-  const text = await req.text();
+  const text = new TextDecoder().decode(await readBodyCapped(req, max));
   return { input: { text } };
 }
 
@@ -348,8 +418,11 @@ async function buildResponse(result: InvokeResult, cors: boolean): Promise<Respo
 }
 
 function sseLine(event: string, data: string): string {
+  // EventSource treats CR, LF, and CRLF as line terminators, so split on all
+  // three: a bare `\r` in kernel output (often echoed request input) would
+  // otherwise let a chunk forge `event:`/`data:` fields inside one `data:` line.
   const payload = data
-    .split('\n')
+    .split(/\r\n|\r|\n/)
     .map((l) => `data: ${l}`)
     .join('\n');
   return `event: ${event}\n${payload}\n\n`;
@@ -369,21 +442,17 @@ function streamResponse(
       const ac = new AbortController();
       const onAbort = (): void => ac.abort();
       req.signal.addEventListener('abort', onAbort);
+      // Streaming kernels count against the same concurrency cap as buffered
+      // invocations, acquired before the body is read - so `Accept:
+      // text/event-stream` cannot bypass the limit during ingestion either.
+      const release = await limiter.acquire();
       try {
         const parsed = await readInput(req, skill, max);
         stagedDir = parsed.stagedDir;
         const onData = (event: StreamEvent): void => {
           controller.enqueue(encoder.encode(sseLine(event.stream, event.chunk)));
         };
-        // Streaming kernels count against the same concurrency cap as buffered
-        // invocations, so `Accept: text/event-stream` cannot bypass the limit.
-        const release = await limiter.acquire();
-        let result: InvokeResult;
-        try {
-          result = await invokeSkill(skill, parsed.input, { signal: ac.signal, onData });
-        } finally {
-          release();
-        }
+        const result = await invokeSkill(skill, parsed.input, { signal: ac.signal, onData });
         await result.cleanup();
         controller.enqueue(
           encoder.encode(
@@ -395,6 +464,7 @@ function streamResponse(
           encoder.encode(sseLine('error', err instanceof Error ? err.message : String(err))),
         );
       } finally {
+        release();
         req.signal.removeEventListener('abort', onAbort);
         if (stagedDir) {
           await rm(stagedDir, { recursive: true, force: true });
@@ -432,10 +502,11 @@ function streamResponse(
  */
 export function createFetchHandler(options: HuskServerOptions): FetchHandler {
   const skills = options.skills;
-  const cors = options.cors ?? true;
+  const cors = options.cors ?? false;
   const maxBody = options.maxBodyBytes ?? DEFAULT_MAX_BODY;
   const serviceName = options.serviceName ?? 'HUSK skills';
   const version = options.version ?? '0.1.0';
+  const allowedHosts = options.allowedHosts?.map((h) => h.toLowerCase());
   const limiter = createLimiter(options.concurrency ?? 0);
 
   const cards = skills.map(toCard);
@@ -463,6 +534,19 @@ export function createFetchHandler(options: HuskServerOptions): FetchHandler {
     // straight through - no buffering, so SSE and large bodies pass intact.
     if (skill.manifest.mode === 'proxy' && skill.manifest.proxy) {
       assertBodyWithinLimit(req, maxBody);
+      // Count proxy invocations against the same `concurrency` cap as kernels -
+      // proxy spends the operator's injected ${VAR} key and holds a long-lived
+      // upstream connection, so it must not be able to fan out without limit.
+      // The slot is held for the FULL streamed lifetime (released on the body's
+      // close, error, or client cancel), not just until the headers arrive.
+      const release = await limiter.acquire();
+      let released = false;
+      const releaseOnce = (): void => {
+        if (!released) {
+          released = true;
+          release();
+        }
+      };
       const start = Date.now();
       let upstream: Response;
       try {
@@ -472,8 +556,10 @@ export function createFetchHandler(options: HuskServerOptions): FetchHandler {
           body: req.body,
           query: url.search,
           signal: req.signal,
+          timeoutMs: skill.manifest.timeoutMs,
         });
       } catch (err) {
+        releaseOnce();
         const status = err instanceof ProxyError ? 502 : 500;
         return json({ error: err instanceof Error ? err.message : String(err) }, status, cors);
       }
@@ -482,7 +568,37 @@ export function createFetchHandler(options: HuskServerOptions): FetchHandler {
         headers.set(key, value);
       }
       headers.set('x-husk-duration-ms', String(Date.now() - start));
-      return new Response(upstream.body, {
+      if (!upstream.body) {
+        releaseOnce();
+        return new Response(null, {
+          status: upstream.status,
+          statusText: upstream.statusText,
+          headers,
+        });
+      }
+      // Forward the upstream body while holding the slot until the stream ends.
+      const reader = upstream.body.getReader();
+      const monitored = new ReadableStream<Uint8Array>({
+        async pull(controller) {
+          try {
+            const { done, value } = await reader.read();
+            if (done) {
+              releaseOnce();
+              controller.close();
+              return;
+            }
+            controller.enqueue(value);
+          } catch (err) {
+            releaseOnce();
+            controller.error(err);
+          }
+        },
+        cancel(reason) {
+          releaseOnce();
+          return reader.cancel(reason);
+        },
+      });
+      return new Response(monitored, {
         status: upstream.status,
         statusText: upstream.statusText,
         headers,
@@ -497,33 +613,46 @@ export function createFetchHandler(options: HuskServerOptions): FetchHandler {
       return streamResponse(req, skill, maxBody, cors, limiter);
     }
 
-    const { input, stagedDir } = await readInput(req, skill, maxBody);
+    // Acquire the concurrency slot BEFORE reading/buffering the body, so body
+    // ingestion is bounded by the same cap as kernel execution - otherwise an
+    // attacker could open unlimited concurrent uploads the `concurrency` knob
+    // never gated.
+    const release = await limiter.acquire();
     try {
-      const ac = new AbortController();
-      const onAbort = (): void => ac.abort();
-      req.signal.addEventListener('abort', onAbort);
-      const release = await limiter.acquire();
-      let result: InvokeResult;
+      const { input, stagedDir } = await readInput(req, skill, maxBody);
       try {
-        result = await invokeSkill(skill, input, { signal: ac.signal });
+        const ac = new AbortController();
+        const onAbort = (): void => ac.abort();
+        req.signal.addEventListener('abort', onAbort);
+        let result: InvokeResult;
+        try {
+          result = await invokeSkill(skill, input, { signal: ac.signal });
+        } finally {
+          req.signal.removeEventListener('abort', onAbort);
+        }
+        try {
+          return await buildResponse(result, cors);
+        } finally {
+          await result.cleanup();
+        }
       } finally {
-        release();
-        req.signal.removeEventListener('abort', onAbort);
-      }
-      try {
-        return await buildResponse(result, cors);
-      } finally {
-        await result.cleanup();
+        if (stagedDir) {
+          await rm(stagedDir, { recursive: true, force: true });
+        }
       }
     } finally {
-      if (stagedDir) {
-        await rm(stagedDir, { recursive: true, force: true });
-      }
+      release();
     }
   }
 
   return async function handler(req: Request): Promise<Response> {
     try {
+      // Reject mismatched Host first (DNS-rebinding defense), before CORS
+      // preflight or any routing - a rebound attacker host never gets served.
+      if (allowedHosts && !allowedHosts.includes(hostName(req.headers.get('host') ?? ''))) {
+        return json({ error: 'host not allowed' }, 403, cors);
+      }
+
       if (req.method === 'OPTIONS') {
         return new Response(null, { status: 204, headers: corsHeaders(cors) });
       }

@@ -135,6 +135,10 @@ async function postJson(
         method: 'POST',
         headers: { 'content-type': 'application/json', ...headers },
         body: JSON.stringify(body),
+        // Never follow redirects: the provider key (`x-api-key` / bearer) lives
+        // in `headers` and fetch does NOT strip custom headers on a cross-origin
+        // redirect, so following a 3xx would replay the key to that host.
+        redirect: 'manual',
         signal,
       });
     } catch (err) {
@@ -143,6 +147,11 @@ async function postJson(
     }
     if (res.ok) {
       return res.json();
+    }
+    if (res.type === 'opaqueredirect' || res.status === 0) {
+      throw new LlmError(
+        `LLM request failed - provider redirected (refused, to protect the API key)`,
+      );
     }
     const text = await res.text().catch(() => '');
     lastError = `HTTP ${res.status}: ${text.slice(0, 500)}`;

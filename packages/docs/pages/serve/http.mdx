@@ -27,9 +27,9 @@ On startup it prints the routes it is serving:
 | Flag                    | Default       | Notes                                               |
 | ----------------------- | ------------- | --------------------------------------------------- |
 | `-p, --port <port>`     | `3000`        | Port to listen on. Falls back to `$HUSK_PORT`.      |
-| `-H, --host <host>`     | `0.0.0.0`     | Address to bind.                                    |
+| `-H, --host <host>`     | `127.0.0.1`   | Address to bind. Use `0.0.0.0` to expose off-host.  |
 | `-w, --watch`           | off           | Reload skills when files in the directory change.   |
-| `--no-cors`             | CORS on       | Disable the permissive CORS headers.                |
+| `--cors`                | CORS off      | Enable permissive CORS headers (off by default).    |
 | `-c, --concurrency <n>` | `0`           | Max concurrent kernel invocations. `0` = unlimited. |
 | `-n, --name <name>`     | `HUSK skills` | Service name shown on the index and in OpenAPI.     |
 

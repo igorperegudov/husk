@@ -15,6 +15,21 @@ export interface Scaffold {
   files: ScaffoldFile[];
 }
 
+/**
+ * Render a string as a YAML double-quoted scalar. Without this, a `name`
+ * containing a newline (or `:`/`#`/quote) would inject arbitrary frontmatter
+ * keys - e.g. an attacker-chosen `run:` - into the scaffolded SKILL.md.
+ */
+function yamlString(value: string): string {
+  const escaped = value
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\r/g, '\\r')
+    .replace(/\n/g, '\\n')
+    .replace(/\t/g, '\\t');
+  return `"${escaped}"`;
+}
+
 const DOC = (name: string): string =>
   [
     '',
@@ -35,7 +50,7 @@ function bashSkill(name: string, slug: string): Scaffold {
         content:
           [
             '---',
-            `name: ${name}`,
+            `name: ${yamlString(name)}`,
             'description: Echo back the text you send, in bash.',
             'run: ./run.sh',
             'input: text',
@@ -68,7 +83,7 @@ function pythonSkill(name: string, slug: string): Scaffold {
         content:
           [
             '---',
-            `name: ${name}`,
+            `name: ${yamlString(name)}`,
             'description: Echo back the text you send, in Python.',
             'run: python3 run.py',
             'input: text',
@@ -101,7 +116,7 @@ function tsSkill(name: string, slug: string): Scaffold {
         content:
           [
             '---',
-            `name: ${name}`,
+            `name: ${yamlString(name)}`,
             'description: Echo back the text you send, in TypeScript on Bun.',
             'run: ./run.ts',
             'input: text',

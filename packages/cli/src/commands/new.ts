@@ -1,5 +1,6 @@
 import { chmodSync, constants, existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
+import { stripControlChars } from '@elisymlabs/husk-core';
 import chalk from 'chalk';
 import { scaffoldSkill, type Lang } from '../templates';
 import { fail } from '../util';
@@ -17,9 +18,22 @@ export function newCommand(name: string, opts: NewOptions): void {
     fail(`unknown --lang "${opts.lang}" (choose one of: ${LANGS.join(', ')})`);
   }
 
+  if (name !== stripControlChars(name)) {
+    fail('skill name must not contain control characters or newlines');
+  }
+
   const scaffold = scaffoldSkill(name, lang);
+  if (!scaffold.slug) {
+    fail('skill name must contain at least one letter or digit');
+  }
+
   const baseDir = resolve(opts.dir ?? 'skills');
   const skillDir = join(baseDir, scaffold.slug);
+  // With a non-empty slug (a-z0-9- only) this always holds; assert it so a
+  // future slug change can never write into or above the skills root.
+  if (!skillDir.startsWith(baseDir + sep)) {
+    fail(`refusing to scaffold "${scaffold.slug}" outside ${baseDir}`);
+  }
 
   if (existsSync(skillDir)) {
     fail(`${skillDir} already exists`);
