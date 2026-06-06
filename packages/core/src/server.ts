@@ -96,14 +96,26 @@ function createLimiter(max: number): Limiter {
   const queue: Array<() => void> = [];
   const acquire = async (): Promise<() => void> => {
     if (active >= max) {
+      // Wait for a releaser to hand us its slot. The slot is reserved for us at
+      // hand-off (active is left unchanged), so we must NOT re-increment here -
+      // doing the increment after this await is what would let a fresh acquire
+      // slip into the gap and push the count above `max`.
       await new Promise<void>((resolve) => queue.push(resolve));
+    } else {
+      active += 1;
     }
-    active += 1;
+    let released = false;
     return () => {
-      active -= 1;
+      if (released) {
+        return;
+      }
+      released = true;
       const next = queue.shift();
       if (next) {
+        // Hand our slot directly to the next waiter; `active` stays the same.
         next();
+      } else {
+        active -= 1;
       }
     };
   };
@@ -449,8 +461,22 @@ function streamResponse(
       try {
         const parsed = await readInput(req, skill, max);
         stagedDir = parsed.stagedDir;
+        let closed = false;
         const onData = (event: StreamEvent): void => {
-          controller.enqueue(encoder.encode(sseLine(event.stream, event.chunk)));
+          if (closed) {
+            return;
+          }
+          try {
+            controller.enqueue(encoder.encode(sseLine(event.stream, event.chunk)));
+          } catch {
+            // The SSE consumer is gone (client disconnected, stream cancelled).
+            // This runs synchronously from the kernel's stdout `data` handler -
+            // outside this function's try/catch - so an unguarded enqueue would
+            // escape as an uncaught exception. Stop forwarding and abort the
+            // kernel so it doesn't keep running with nowhere to send output.
+            closed = true;
+            ac.abort();
+          }
         };
         const result = await invokeSkill(skill, parsed.input, { signal: ac.signal, onData });
         await result.cleanup();
