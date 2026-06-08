@@ -142,7 +142,22 @@ HUSK calls the provider's HTTP API directly - no provider SDK is bundled. Anthro
 :::
 
 :::warning
-Tool scripts run with the skill folder as their working directory, and HUSK strips provider API keys (`ANTHROPIC_API_KEY`, ...) from the tool's environment so an untrusted tool script cannot read them. Each tool call is bounded by the skill's `timeout_ms`.
+Tool scripts run with the skill folder as their working directory and an **allowlisted, secret-free environment**: only safe operational variables (`PATH`, `HOME`, `LANG`, the `LC_*` locale family, ...) are passed through. Provider API keys and every other secret in the server environment - including a co-hosted proxy skill's `${VAR}` upstream credentials - are withheld, so a prompt-injected or untrusted tool script cannot read them. Each tool call is bounded by the skill's `timeout_ms`.
+
+If a tool needs its own credential or config from the environment, opt those variables in explicitly with `tool_env:` (a list of variable names). Provider API keys can never be opted in.
+
+```yaml
+tools:
+  - name: weather
+    description: Look up the weather for a city.
+    command: ['python3', 'weather.py']
+    parameters:
+      - name: city
+        description: City name
+        required: true
+tool_env: [WEATHER_API_KEY] # this tool's script may read $WEATHER_API_KEY
+```
+
 :::
 
 ## When to use which mode

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ReadableStream } from 'node:stream/web';
 import { invokeSkill, kernelErrorMessage } from './invoke';
+import { PROVIDER_ENV_VARS } from './llm';
 import { generateOpenApi } from './openapi';
 import { ProxyError, proxyRequest } from './proxy';
 import type { HttpMethod, InvokeInput, InvokeResult, Skill, StreamEvent } from './types';
@@ -20,6 +21,24 @@ export interface HuskServerOptions {
   cors?: boolean;
   /** Reject request bodies larger than this many bytes. Default 50 MB. */
   maxBodyBytes?: number;
+  /**
+   * Reject kernel file output larger than this many bytes - a single file, or
+   * the total across a multi-file result. Bounds server memory the way the
+   * stdout cap and request-body cap already do; file output is otherwise read
+   * fully into memory (and base64-amplified for multi-file results). Default
+   * 100 MB.
+   */
+  maxOutputBytes?: number;
+  /**
+   * Cap on total bytes forwarded over a single SSE (`text/event-stream`)
+   * invocation. The streamed path has no executor-level cap and `enqueue` never
+   * blocks, so a kernel that outpaces a slow client would grow the stream's
+   * in-memory queue unbounded; past this cap the stream is truncated and the
+   * kernel aborted. Defaults to `maxOutputBytes`. When exposing streaming skills,
+   * also set a non-zero `concurrency` so many slow readers cannot each pin a
+   * cap-sized buffer.
+   */
+  maxStreamBytes?: number;
   /** Max concurrent kernel invocations. 0 (default) means unlimited. */
   concurrency?: number;
   /**
@@ -56,6 +75,10 @@ export interface SkillCard {
 export type FetchHandler = (req: Request) => Promise<Response>;
 
 const DEFAULT_MAX_BODY = 50 * 1024 * 1024;
+const DEFAULT_MAX_OUTPUT = 100 * 1024 * 1024;
+
+/** Content types a browser will execute/render inline (XSS surface for reflected input). */
+const RENDERABLE_TYPES = new Set(['text/html', 'application/xhtml+xml', 'image/svg+xml']);
 
 class HttpError extends Error {
   constructor(
@@ -136,7 +159,11 @@ function corsHeaders(enabled: boolean): Record<string, string> {
 function json(body: unknown, status: number, cors: boolean): Response {
   return new Response(JSON.stringify(body, null, 2), {
     status,
-    headers: { 'content-type': 'application/json; charset=utf-8', ...corsHeaders(cors) },
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
+      'x-content-type-options': 'nosniff',
+      ...corsHeaders(cors),
+    },
   });
 }
 
@@ -267,7 +294,12 @@ async function stageFile(
   filename: string,
 ): Promise<{ path: string; dir: string }> {
   const dir = await mkdtemp(join(tmpdir(), 'husk-in-'));
-  const safeName = filename.replace(/[\\/]/g, '_') || 'input';
+  // Collapse separators, then reject `.`/`..`/empty to a safe segment: a bare
+  // `.` or `..` has no separators to strip, so `join(dir, name)` would resolve to
+  // the staging dir or its parent and make writeFile throw EISDIR - a 500 that
+  // leaks the temp path. Mirrors the HUSK_INPUT_FILENAME guard in invoke.ts.
+  const cleaned = filename.replace(/[\\/]/g, '_').trim();
+  const safeName = cleaned && cleaned !== '.' && cleaned !== '..' ? cleaned : 'input';
   const path = join(dir, safeName);
   await writeFile(path, bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes));
   return { path, dir };
@@ -354,6 +386,42 @@ async function readInput(
   return { input: { text } };
 }
 
+/**
+ * Redact known provider API-key values from any text echoed back to a client.
+ * Error responses return the kernel's stderr, and a failing kernel that prints
+ * its environment (a verbose traceback, `set -x`, a library that logs config)
+ * could otherwise leak the provider key - the repo's #1 asset - in an HTTP error
+ * body that, by default, reaches an unauthenticated client.
+ */
+function scrubSecrets(text: string): string {
+  let out = text;
+  for (const name of PROVIDER_ENV_VARS) {
+    const value = process.env[name];
+    // Guard against redacting on a trivially short value that could match common
+    // substrings; real provider keys are long.
+    if (value && value.length >= 8) {
+      out = out.split(value).join('[redacted]');
+    }
+  }
+  return out;
+}
+
+/**
+ * Longest provider-key value currently in the environment (0 if none). A
+ * streamed scrubber must carry this many chars across chunk boundaries so a key
+ * split between two stderr chunks is still redacted once the pieces rejoin.
+ */
+function maxSecretLen(): number {
+  let max = 0;
+  for (const name of PROVIDER_ENV_VARS) {
+    const value = process.env[name];
+    if (value && value.length >= 8 && value.length > max) {
+      max = value.length;
+    }
+  }
+  return max;
+}
+
 function errorStatus(result: InvokeResult): number {
   if (result.timedOut) {
     return 504;
@@ -364,17 +432,25 @@ function errorStatus(result: InvokeResult): number {
   return 500;
 }
 
-async function buildResponse(result: InvokeResult, cors: boolean): Promise<Response> {
+async function buildResponse(
+  result: InvokeResult,
+  cors: boolean,
+  maxOutput: number,
+  trustedInline: boolean,
+): Promise<Response> {
   const base = {
     'x-husk-duration-ms': String(result.durationMs),
+    // Never let a browser MIME-sniff kernel output (which often reflects request
+    // input) into active content - e.g. a text/plain body sniffed as HTML.
+    'x-content-type-options': 'nosniff',
     ...corsHeaders(cors),
   };
 
   if (!result.ok) {
     return json(
       {
-        error: kernelErrorMessage(result),
-        stderr: result.stderr.slice(0, 8000),
+        error: scrubSecrets(kernelErrorMessage(result)),
+        stderr: scrubSecrets(result.stderr.slice(0, 8000)),
         exitCode: result.exitCode,
       },
       errorStatus(result),
@@ -385,8 +461,22 @@ async function buildResponse(result: InvokeResult, cors: boolean): Promise<Respo
   if (result.outputKind === 'file') {
     if (result.files.length === 0) {
       return json(
-        { error: 'skill produced no file output', stderr: result.stderr.slice(0, 8000) },
+        {
+          error: 'skill produced no file output',
+          stderr: scrubSecrets(result.stderr.slice(0, 8000)),
+        },
         500,
+        cors,
+      );
+    }
+    // Cap output the way stdout and the request body are capped: kernel file
+    // output is read fully into memory below, so an unbounded (or input-scaled)
+    // file would let a single request exhaust server memory.
+    const totalBytes = result.files.reduce((sum, f) => sum + f.size, 0);
+    if (totalBytes > maxOutput) {
+      return json(
+        { error: `output exceeds the ${maxOutput}-byte limit (${totalBytes} bytes)` },
+        413,
         cors,
       );
     }
@@ -395,12 +485,20 @@ async function buildResponse(result: InvokeResult, cors: boolean): Promise<Respo
       const bytes = await readFile(file.path);
       const note = singleLineHeader(result.stdout, 1000);
       const filename = singleLineHeader(file.filename, 255).replace(/"/g, "'");
+      // Kernel/proxy file output can reflect request input. If its content-type
+      // is one a browser renders as active content (HTML/SVG/XHTML), force a
+      // download rather than inline rendering so reflected markup can't execute
+      // script in our origin. Operator-authored static files (input-independent,
+      // trusted) keep `inline`.
+      const baseType = file.mime.split(';')[0].trim().toLowerCase();
+      const disposition =
+        !trustedInline && RENDERABLE_TYPES.has(baseType) ? 'attachment' : 'inline';
       return new Response(bytes, {
         status: 200,
         headers: {
           ...base,
           'content-type': file.mime,
-          'content-disposition': `inline; filename="${filename}"`,
+          'content-disposition': `${disposition}; filename="${filename}"`,
           ...(note ? { 'x-husk-note': note } : {}),
         },
       });
@@ -446,6 +544,7 @@ function streamResponse(
   max: number,
   cors: boolean,
   limiter: Limiter,
+  maxStream: number,
 ): Response {
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
@@ -462,12 +561,55 @@ function streamResponse(
         const parsed = await readInput(req, skill, max);
         stagedDir = parsed.stagedDir;
         let closed = false;
+        let streamed = 0;
+        let stderrCarry = '';
+        // Carry >= the longest provider key across stderr chunks so a key split
+        // at a chunk boundary still gets redacted when the pieces rejoin.
+        const holdback = Math.max(0, maxSecretLen() - 1);
+        // Enqueue one SSE frame, enforcing the per-connection byte cap. `enqueue`
+        // never blocks and no backpressure reaches the child, so a kernel that
+        // outpaces a slow/stalled client would otherwise grow this stream's
+        // internal queue without limit (the executor's 5 MB cap only bounds the
+        // stored string, not forwarded chunks). Past the cap, send a truncation
+        // marker, stop forwarding, and abort the kernel.
+        const emit = (streamName: StreamEvent['stream'], text: string): void => {
+          if (closed || text.length === 0) {
+            return;
+          }
+          const frame = encoder.encode(sseLine(streamName, text));
+          if (streamed + frame.byteLength > maxStream) {
+            closed = true;
+            controller.enqueue(
+              encoder.encode(
+                sseLine('error', `output exceeded the ${maxStream}-byte stream limit; truncated`),
+              ),
+            );
+            ac.abort();
+            return;
+          }
+          streamed += frame.byteLength;
+          controller.enqueue(frame);
+        };
         const onData = (event: StreamEvent): void => {
           if (closed) {
             return;
           }
           try {
-            controller.enqueue(encoder.encode(sseLine(event.stream, event.chunk)));
+            // stdout is product output, forwarded as-is. stderr is the diagnostic
+            // stream - scrub provider keys from it (mirroring the buffered error
+            // path) before forwarding, holding back a tail so a key spanning two
+            // chunks is caught when they rejoin.
+            if (event.stream !== 'stderr') {
+              emit(event.stream, event.chunk);
+              return;
+            }
+            const scrubbed = scrubSecrets(stderrCarry + event.chunk);
+            if (scrubbed.length > holdback) {
+              stderrCarry = scrubbed.slice(scrubbed.length - holdback);
+              emit('stderr', scrubbed.slice(0, scrubbed.length - holdback));
+            } else {
+              stderrCarry = scrubbed;
+            }
           } catch {
             // The SSE consumer is gone (client disconnected, stream cancelled).
             // This runs synchronously from the kernel's stdout `data` handler -
@@ -479,6 +621,11 @@ function streamResponse(
           }
         };
         const result = await invokeSkill(skill, parsed.input, { signal: ac.signal, onData });
+        // Flush the held-back stderr tail (re-scrubbed for safety).
+        if (stderrCarry) {
+          emit('stderr', scrubSecrets(stderrCarry));
+          stderrCarry = '';
+        }
         await result.cleanup();
         controller.enqueue(
           encoder.encode(
@@ -487,7 +634,9 @@ function streamResponse(
         );
       } catch (err) {
         controller.enqueue(
-          encoder.encode(sseLine('error', err instanceof Error ? err.message : String(err))),
+          encoder.encode(
+            sseLine('error', scrubSecrets(err instanceof Error ? err.message : String(err))),
+          ),
         );
       } finally {
         release();
@@ -504,6 +653,7 @@ function streamResponse(
     headers: {
       'content-type': 'text/event-stream; charset=utf-8',
       'cache-control': 'no-cache, no-transform',
+      'x-content-type-options': 'nosniff',
       connection: 'keep-alive',
       ...corsHeaders(cors),
     },
@@ -530,6 +680,8 @@ export function createFetchHandler(options: HuskServerOptions): FetchHandler {
   const skills = options.skills;
   const cors = options.cors ?? false;
   const maxBody = options.maxBodyBytes ?? DEFAULT_MAX_BODY;
+  const maxOutput = options.maxOutputBytes ?? DEFAULT_MAX_OUTPUT;
+  const maxStream = options.maxStreamBytes ?? maxOutput;
   const serviceName = options.serviceName ?? 'HUSK skills';
   const version = options.version ?? '0.1.0';
   const allowedHosts = options.allowedHosts?.map((h) => h.toLowerCase());
@@ -587,13 +739,33 @@ export function createFetchHandler(options: HuskServerOptions): FetchHandler {
       } catch (err) {
         releaseOnce();
         const status = err instanceof ProxyError ? 502 : 500;
-        return json({ error: err instanceof Error ? err.message : String(err) }, status, cors);
+        return json(
+          { error: scrubSecrets(err instanceof Error ? err.message : String(err)) },
+          status,
+          cors,
+        );
       }
       const headers = new Headers(upstream.headers);
       for (const [key, value] of Object.entries(corsHeaders(cors))) {
         headers.set(key, value);
       }
       headers.set('x-husk-duration-ms', String(Date.now() - start));
+      // Mirror every other response path: forbid MIME-sniffing the proxied body.
+      // The proxy forwards the live client query/body upstream, so an upstream
+      // that reflects that input in a sniffable response must not be rendered as
+      // active content in our origin.
+      headers.set('x-content-type-options', 'nosniff');
+      // nosniff does not stop a browser rendering an explicit text/html or SVG
+      // body. Proxied bodies reflect client input and are never operator-authored
+      // static files, so force a download for renderable types - the same defense
+      // buildResponse applies to kernel file output.
+      const proxyType = (upstream.headers.get('content-type') ?? '')
+        .split(';')[0]
+        .trim()
+        .toLowerCase();
+      if (RENDERABLE_TYPES.has(proxyType)) {
+        headers.set('content-disposition', 'attachment');
+      }
       if (!upstream.body) {
         releaseOnce();
         return new Response(null, {
@@ -636,7 +808,7 @@ export function createFetchHandler(options: HuskServerOptions): FetchHandler {
       (url.searchParams.get('stream') === '1' ||
         (req.headers.get('accept') ?? '').includes('text/event-stream'));
     if (wantsStream) {
-      return streamResponse(req, skill, maxBody, cors, limiter);
+      return streamResponse(req, skill, maxBody, cors, limiter, maxStream);
     }
 
     // Acquire the concurrency slot BEFORE reading/buffering the body, so body
@@ -657,7 +829,12 @@ export function createFetchHandler(options: HuskServerOptions): FetchHandler {
           req.signal.removeEventListener('abort', onAbort);
         }
         try {
-          return await buildResponse(result, cors);
+          return await buildResponse(
+            result,
+            cors,
+            maxOutput,
+            skill.manifest.mode === 'static-file',
+          );
         } finally {
           await result.cleanup();
         }
@@ -707,7 +884,11 @@ export function createFetchHandler(options: HuskServerOptions): FetchHandler {
         if (path === '/') {
           return new Response(indexHtml(serviceName, cards), {
             status: 200,
-            headers: { 'content-type': 'text/html; charset=utf-8', ...corsHeaders(cors) },
+            headers: {
+              'content-type': 'text/html; charset=utf-8',
+              'x-content-type-options': 'nosniff',
+              ...corsHeaders(cors),
+            },
           });
         }
         if (path === '/healthz') {
@@ -733,7 +914,11 @@ export function createFetchHandler(options: HuskServerOptions): FetchHandler {
       if (err instanceof HttpError) {
         return json({ error: err.message }, err.status, cors);
       }
-      return json({ error: err instanceof Error ? err.message : String(err) }, 500, cors);
+      return json(
+        { error: scrubSecrets(err instanceof Error ? err.message : String(err)) },
+        500,
+        cors,
+      );
     }
   };
 }

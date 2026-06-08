@@ -209,7 +209,7 @@ curl -X POST localhost:3000/skills/anthropic-proxy \
 
 ```bash
 git clone https://github.com/elisymlabs/husk
-cd husk && bun install
+cd husk && bun install && bun run build
 ANTHROPIC_API_KEY=sk-... bun packages/cli/dist/index.js serve examples
 ```
 

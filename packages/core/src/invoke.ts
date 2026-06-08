@@ -1,6 +1,7 @@
+import { realpathSync } from 'node:fs';
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { basename, isAbsolute, join, resolve, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { runProcess, type RunOptions } from './executor';
 import { runLlm } from './llm';
 import { mimeFromPath } from './mime';
@@ -8,6 +9,46 @@ import { proxyRequest } from './proxy';
 import type { InvokeInput, InvokeOptions, InvokeResult, OutputFile, Skill } from './types';
 
 const NOOP_CLEANUP = async (): Promise<void> => {};
+
+/** Default cap on a buffered `mode: proxy` upstream response (100 MB). */
+const DEFAULT_PROXY_MAX_BYTES = 100 * 1024 * 1024;
+
+/** Read a fetch Response body fully, aborting once it exceeds `max` bytes. */
+async function readResponseCapped(res: Response, max: number): Promise<Uint8Array> {
+  const body = res.body;
+  if (!body) {
+    const buf = new Uint8Array(await res.arrayBuffer());
+    if (buf.byteLength > max) {
+      throw new Error(`upstream response exceeds ${max} bytes`);
+    }
+    return buf;
+  }
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    total += value.byteLength;
+    if (total > max) {
+      await reader.cancel().catch(() => {});
+      throw new Error(`upstream response exceeds ${max} bytes`);
+    }
+    chunks.push(value);
+  }
+  if (chunks.length === 1) {
+    return chunks[0];
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return out;
+}
 
 /** A human-readable explanation for a failed {@link InvokeResult}. */
 export function kernelErrorMessage(result: InvokeResult): string {
@@ -37,11 +78,48 @@ function resolveCommand(skill: Skill): { cmd: string; args: string[] } {
   return { cmd: abs, args: rest };
 }
 
+/**
+ * Real path of `p`, or - when `p` does not exist yet - the real path of its
+ * nearest existing ancestor with the missing tail re-attached. Resolving the
+ * ancestor catches a symlinked intermediate directory even when the final
+ * component is absent.
+ */
+function realpathWithTail(p: string): string {
+  let current = p;
+  const tail: string[] = [];
+  for (;;) {
+    try {
+      const real = realpathSync(current);
+      return tail.length === 0 ? real : join(real, ...tail.reverse());
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        throw err;
+      }
+      const parent = dirname(current);
+      if (parent === current) {
+        return p;
+      }
+      tail.push(basename(current));
+      current = parent;
+    }
+  }
+}
+
 /** Guard that a manifest-declared path stays inside the skill folder. */
 function resolveInside(skillDir: string, relPath: string): string {
   const abs = isAbsolute(relPath) ? relPath : resolve(skillDir, relPath);
   const root = resolve(skillDir);
+  // Lexical pre-check rejects an obvious `../` escape before touching disk.
   if (abs !== root && !abs.startsWith(root + sep)) {
+    throw new Error(`path "${relPath}" escapes the skill directory`);
+  }
+  // A lexical check alone is defeated by a symlink inside the skill folder whose
+  // target is outside it (e.g. `serve: data.txt` where `data.txt -> /etc/passwd`):
+  // stat()/readFile() follow symlinks, so resolve the real paths and re-check
+  // containment - the same defense loader.ts's ensureExecutable applies.
+  const realRoot = realpathWithTail(root);
+  const realAbs = realpathWithTail(abs);
+  if (realAbs !== realRoot && !realAbs.startsWith(realRoot + sep)) {
     throw new Error(`path "${relPath}" escapes the skill directory`);
   }
   return abs;
@@ -267,8 +345,32 @@ async function invokeProxy(
     upstreamType === '' ||
     /^(text\/|application\/(json|xml)|application\/[\w.+-]*\+json)/.test(upstreamType);
 
+  // Cap the buffered upstream read so a multi-GB body delivered within the skill
+  // timeout cannot OOM the host - the same bound the request body, kernel output,
+  // and SSE stream already enforce. (The HTTP server streams proxy responses and
+  // never reaches here; this guards the CLI/library buffered path.)
+  const maxBytes = options.maxOutputBytes ?? DEFAULT_PROXY_MAX_BYTES;
+  let raw: Uint8Array;
+  try {
+    raw = await readResponseCapped(res, maxBytes);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      ok: false,
+      stdout: '',
+      stderr: message,
+      exitCode: null,
+      timedOut: false,
+      errorMessage: message,
+      outputKind: skill.manifest.output,
+      files: [],
+      durationMs: Date.now() - startedAt,
+      cleanup: NOOP_CLEANUP,
+    };
+  }
+
   if (isText) {
-    const body = await res.text();
+    const body = new TextDecoder().decode(raw);
     return {
       ok,
       stdout: body,
@@ -283,7 +385,7 @@ async function invokeProxy(
     };
   }
 
-  const bytes = new Uint8Array(await res.arrayBuffer());
+  const bytes = raw;
   const workdir = await mkdtemp(join(tmpdir(), 'husk-proxy-'));
   const filePath = join(workdir, 'output');
   await writeFile(filePath, bytes);
@@ -349,7 +451,13 @@ export async function invokeSkill(
       env.HUSK_INPUT_MIME = input.file.mime;
     }
     if (input.file.filename) {
-      env.HUSK_INPUT_FILENAME = input.file.filename;
+      // The upload filename is untrusted, client-controlled input. A kernel may
+      // naively build an output path from it (e.g. `$HUSK_OUTPUT_DIR/$HUSK_INPUT_FILENAME`),
+      // so collapse path separators and reject `.`/`..` to a single safe segment -
+      // matching how the staged input path is sanitized in server.ts.
+      const stripped = input.file.filename.replace(/[\\/]/g, '_').trim();
+      env.HUSK_INPUT_FILENAME =
+        stripped && stripped !== '.' && stripped !== '..' ? stripped : 'input';
     }
   }
 

@@ -36,6 +36,11 @@ frontmatter
 readdir
 mkdtemp
 tmpdir
+LOGNAME
+nosniff
+renderable
+sniffable
+WHATWG
 SIGKILL
 EACCES
 ENOENT

@@ -17,23 +17,26 @@ function requestBodyFor(skill: Skill): Record<string, unknown> | undefined {
     return undefined;
   }
   if (input === 'file') {
-    return {
-      required: true,
-      content: {
-        'multipart/form-data': {
-          schema: {
-            type: 'object',
-            properties: {
-              file: { type: 'string', format: 'binary', description: 'The input file.' },
-              text: { type: 'string', description: 'Optional text sent alongside the file.' },
-            },
+    const content: Record<string, unknown> = {
+      'multipart/form-data': {
+        schema: {
+          type: 'object',
+          properties: {
+            file: { type: 'string', format: 'binary', description: 'The input file.' },
+            text: { type: 'string', description: 'Optional text sent alongside the file.' },
           },
-        },
-        [inputMime && inputMime !== 'none' ? inputMime : 'application/octet-stream']: {
-          schema: { type: 'string', format: 'binary' },
         },
       },
     };
+    // Also advertise the raw-body MIME, but never let it collide with the
+    // structured multipart entry above: when input_mime is itself
+    // `multipart/form-data`, a duplicate object key would silently drop the
+    // documented file/text schema (last key wins).
+    const rawMime = inputMime && inputMime !== 'none' ? inputMime : 'application/octet-stream';
+    if (rawMime !== 'multipart/form-data') {
+      content[rawMime] = { schema: { type: 'string', format: 'binary' } };
+    }
+    return { required: true, content };
   }
   return {
     required: true,

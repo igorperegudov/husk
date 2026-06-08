@@ -40,6 +40,24 @@ function combineSignals(
   return signals.length === 1 ? signals[0] : AbortSignal.any(signals);
 }
 
+/**
+ * Merge the incoming request's query string onto the manifest upstream URL.
+ * String concatenation (`url + search`) corrupts a base URL that already carries
+ * a query or fragment (`...?key=abc` + `?x=y` -> `...?key=abc?x=y`), so parse and
+ * append params via the WHATWG URL API, which preserves the base query/fragment.
+ */
+function buildUpstreamUrl(base: string, query: string | undefined): string {
+  if (!query) {
+    return base;
+  }
+  const url = new URL(base);
+  const incoming = new URLSearchParams(query.startsWith('?') ? query.slice(1) : query);
+  for (const [key, value] of incoming) {
+    url.searchParams.append(key, value);
+  }
+  return url.toString();
+}
+
 /** Substitute `${VAR}` references with environment values; throw if unset. */
 function interpolateEnv(value: string, env: NodeJS.ProcessEnv): string {
   return value.replace(/\$\{([A-Z0-9_]+)\}/g, (_match, name: string) => {
@@ -87,7 +105,7 @@ export async function proxyRequest(
   const incoming = init.headers instanceof Headers ? init.headers : new Headers(init.headers);
   const headers = buildHeaders(spec, incoming, env);
   const method = spec.method ?? init.method;
-  const url = spec.url + (init.query ?? '');
+  const url = buildUpstreamUrl(spec.url, init.query);
 
   const hasBody =
     method !== 'GET' && method !== 'HEAD' && init.body !== undefined && init.body !== null;
@@ -138,10 +156,19 @@ export async function proxyRequest(
     outHeaders.set('content-disposition', disposition);
   }
   // Pass a visible 3xx's Location through so the client can follow it itself,
-  // with its own credentials, never ours.
+  // with its own credentials, never ours - but ONLY when it stays on the
+  // upstream's own origin. An upstream that reflects client input into Location
+  // (a login `?next=`/`return=` endpoint, an echo redirect) would otherwise turn
+  // HUSK into an open redirect, lending its origin's trust to a phishing target.
   const location = upstream.headers.get('location');
   if (location) {
-    outHeaders.set('location', location);
+    try {
+      if (new URL(location, spec.url).origin === new URL(spec.url).origin) {
+        outHeaders.set('location', location);
+      }
+    } catch {
+      // Malformed Location: drop it rather than relay something unparsable.
+    }
   }
   return new Response(upstream.body, {
     status: upstream.status,

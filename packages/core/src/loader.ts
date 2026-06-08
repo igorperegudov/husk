@@ -94,7 +94,7 @@ export function loadSkills(skillsDir: string, options: LoadOptions = {}): LoadRe
   const skills: Skill[] = [];
   const errors: Array<{ dir: string; message: string }> = [];
   const seen = new Map<string, string>();
-  const seenRoutes = new Map<string, string>();
+  const seenPaths = new Map<string, string>();
 
   const candidates: string[] = [];
   // A SKILL.md at the root means `skillsDir` is itself a single skill.
@@ -136,18 +136,28 @@ export function loadSkills(skillsDir: string, options: LoadOptions = {}): LoadRe
           `skill route "${skill.manifest.route}" collides with a built-in endpoint`,
         );
       }
-      // Two skills can have distinct slugs yet the same invoke route (explicit
-      // `route:`, or folder names that slugify alike); the server would silently
-      // overwrite one with the other, so reject the collision up front.
-      const routeKey = `${skill.manifest.method} ${skill.manifest.route}`;
-      const routeClash = seenRoutes.get(routeKey);
-      if (routeClash) {
-        throw new ManifestError(
-          `duplicate skill route "${routeKey}" (already defined by ${routeClash})`,
-        );
+      // The server registers each skill under BOTH its canonical card path
+      // (`/skills/<slug>`) and its invoke `route`, and the card table is keyed by
+      // path alone (no method). So reject any path a prior skill already claims -
+      // an explicit `route:` that shadows another skill's card route, or two
+      // skills sharing a path across methods - which the server would otherwise
+      // silently overwrite (method+route deduping alone misses both). One path
+      // identifies one skill.
+      const canonical = `/skills/${skill.slug}`;
+      const claimedPaths =
+        skill.manifest.route === canonical ? [canonical] : [canonical, skill.manifest.route];
+      for (const path of claimedPaths) {
+        const pathClash = seenPaths.get(path);
+        if (pathClash) {
+          throw new ManifestError(
+            `duplicate skill route "${path}" (already defined by ${pathClash})`,
+          );
+        }
       }
       seen.set(skill.slug, dir);
-      seenRoutes.set(routeKey, dir);
+      for (const path of claimedPaths) {
+        seenPaths.set(path, dir);
+      }
       skills.push(skill);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

@@ -96,6 +96,104 @@ describe('parseManifest', () => {
     expect(m.input).toBe('none');
   });
 
+  it('rejects explicit mode: static-file with no serve target (not silent llm fallback)', () => {
+    // A typo'd `serve:`/`output_file:` must error, not coerce to a token-spending
+    // LLM skill via the implicit default.
+    expect(() =>
+      parseManifest(
+        ['---', 'name: oops', 'description: d', 'mode: static-file', '---'].join('\n'),
+        'oops',
+      ),
+    ).toThrow(ManifestError);
+  });
+
+  it('rejects explicit mode: script with no run/command (not silent llm fallback)', () => {
+    // A typo'd `run:` (e.g. `rnu:`) under an explicit `mode: script` must error
+    // rather than fall through to the implicit, token-spending LLM default.
+    expect(() =>
+      parseManifest(
+        ['---', 'name: oops', 'description: d', 'mode: script', 'rnu: ./x.sh', '---'].join('\n'),
+        'oops',
+      ),
+    ).toThrow(ManifestError);
+  });
+
+  it('rejects explicit mode: script with a serve but no run (not silent static-file)', () => {
+    // A stray `serve:` under an explicit `mode: script` with a missing `run:`
+    // must error, not be silently rerouted to static-file - the operator's
+    // explicit mode is honored and its missing-target guard fires.
+    expect(() =>
+      parseManifest(
+        ['---', 'name: oops', 'description: d', 'mode: script', 'serve: ./x.txt', '---'].join('\n'),
+        'oops',
+      ),
+    ).toThrow(ManifestError);
+  });
+
+  it('rejects `proxy:` alongside an explicit non-proxy mode (no silent coercion to proxy)', () => {
+    // `proxy:` is proxy-only; with an explicit `mode: script` it must error, not
+    // silently turn the skill into a reverse proxy and drop the declared mode.
+    expect(() =>
+      parseManifest(
+        ['---', 'name: oops', 'description: d', 'mode: script', 'proxy: https://up/x', '---'].join(
+          '\n',
+        ),
+        'oops',
+      ),
+    ).toThrow(ManifestError);
+  });
+
+  it('rejects `tools:` alongside an explicit non-llm mode (no silent coercion to llm)', () => {
+    // `tools:` is llm-only; with an explicit `mode: script` (even fully specified
+    // with a `run:`) it must NOT flip the skill to a token-spending llm endpoint
+    // and drop the declared command - it must error loudly.
+    expect(() =>
+      parseManifest(
+        [
+          '---',
+          'name: oops',
+          'description: d',
+          'mode: script',
+          'run: ./x.sh',
+          'tools:',
+          '  - name: t',
+          '    description: a tool',
+          "    command: ['./t.sh']",
+          '---',
+        ].join('\n'),
+        'oops',
+      ),
+    ).toThrow(ManifestError);
+  });
+
+  it('rejects a timeout_ms larger than the 32-bit setTimeout ceiling', () => {
+    // > 2_147_483_647 ms would overflow to a 1ms timer and SIGKILL instantly.
+    expect(() =>
+      parseManifest(
+        [
+          '---',
+          'name: slow',
+          'description: d',
+          'run: ./s.sh',
+          'timeout_ms: 9999999999',
+          '---',
+        ].join('\n'),
+        'slow',
+      ),
+    ).toThrow(ManifestError);
+  });
+
+  it('derives the default route from the manifest name slug, not the folder slug', () => {
+    // The folder slug (`my-folder`) differs from the name slug; the default
+    // invoke route must use the name slug so it matches the skill's identity and
+    // its canonical card route, instead of diverging.
+    const m = parseManifest(
+      ['---', 'name: Cool Skill', 'description: d', 'run: ./x.sh', '---'].join('\n'),
+      'my-folder',
+    );
+    expect(m.route).toBe('/skills/cool-skill');
+  });
+
   it('honors explicit route and method', () => {
     const m = parseManifest(
       [
@@ -116,6 +214,17 @@ describe('parseManifest', () => {
   it('requires name and description', () => {
     expect(() => parseManifest('---\nrun: ./x.sh\n---', 's')).toThrow(ManifestError);
     expect(() => parseManifest('---\nname: x\n---', 's')).toThrow(ManifestError);
+  });
+
+  it('rejects a name that is only control characters (empty after stripping)', () => {
+    // `name: ""` survives trim() (not whitespace) but strips to empty;
+    // requireString must still reject it, not return ''.
+    expect(() =>
+      parseManifest(
+        ['---', 'name: "\\u0001"', 'description: d', 'run: ./x.sh', '---'].join('\n'),
+        's',
+      ),
+    ).toThrow(ManifestError);
   });
 
   it('treats a bare prompt skill (no run/serve) as mode: llm', () => {

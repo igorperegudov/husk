@@ -55,8 +55,36 @@ const PROVIDERS: Record<string, ProviderInfo> = {
   },
 };
 
-/** Provider env vars hidden from tool subprocesses so scripts can't read keys. */
-const SECRET_ENV_VARS = Object.values(PROVIDERS).map((p) => p.envVar);
+/** Names of the provider API-key env vars (e.g. `ANTHROPIC_API_KEY`). */
+export const PROVIDER_ENV_VARS = Object.values(PROVIDERS).map((p) => p.envVar);
+
+/** Provider API keys: never handed to a tool subprocess, even if opted in. */
+const PROVIDER_KEYS = new Set(PROVIDER_ENV_VARS);
+
+/**
+ * The only environment variables a tool subprocess inherits by default: safe,
+ * non-secret operational essentials a script needs to run (find its interpreter
+ * on `PATH`, locate `$HOME`, honor the locale). The `LC_*` locale family is
+ * matched by prefix. Everything else - including any operator secret in the
+ * server environment (provider keys, a proxy skill's `${VAR}` upstream
+ * credentials, a stray `GITHUB_TOKEN`) - is withheld unless the skill names it
+ * in `tool_env:`.
+ */
+const TOOL_ENV_ALLOWLIST = new Set([
+  'PATH',
+  'HOME',
+  'USER',
+  'LOGNAME',
+  'SHELL',
+  'PWD',
+  'TMPDIR',
+  'TMP',
+  'TEMP',
+  'TERM',
+  'LANG',
+  'LANGUAGE',
+  'TZ',
+]);
 
 interface ResolvedLlm {
   kind: ProviderKind;
@@ -104,6 +132,24 @@ interface ToolResult {
 
 const RETRYABLE = new Set([429, 500, 502, 503, 529]);
 
+/** Combine an optional caller signal with an optional hard timeout (mirrors proxy.ts). */
+function combineSignals(
+  signal: AbortSignal | undefined,
+  timeoutMs: number | undefined,
+): AbortSignal | undefined {
+  const signals: AbortSignal[] = [];
+  if (signal) {
+    signals.push(signal);
+  }
+  if (timeoutMs && timeoutMs > 0) {
+    signals.push(AbortSignal.timeout(timeoutMs));
+  }
+  if (signals.length === 0) {
+    return undefined;
+  }
+  return signals.length === 1 ? signals[0] : AbortSignal.any(signals);
+}
+
 function delay(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(resolve, ms);
@@ -123,11 +169,18 @@ async function postJson(
   headers: Record<string, string>,
   body: unknown,
   signal?: AbortSignal,
+  timeoutMs?: number,
 ): Promise<unknown> {
+  // Bound each provider round-trip by the skill timeout (like proxy.ts and the
+  // kernel runner), combined with the caller signal, so a stalled provider
+  // connection can't pin the request - and its concurrency slot - until the
+  // client disconnects or the socket idles out. Created once so it caps the
+  // whole call, retries and backoff included.
+  const reqSignal = combineSignals(signal, timeoutMs);
   let lastError = '';
   for (let attempt = 0; attempt < 3; attempt++) {
     if (attempt > 0) {
-      await delay(250 * attempt, signal);
+      await delay(250 * attempt, reqSignal);
     }
     let res: Response;
     try {
@@ -139,7 +192,7 @@ async function postJson(
         // in `headers` and fetch does NOT strip custom headers on a cross-origin
         // redirect, so following a 3xx would replay the key to that host.
         redirect: 'manual',
-        signal,
+        signal: reqSignal,
       });
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err);
@@ -184,6 +237,7 @@ async function anthropicComplete(
   messages: unknown[],
   tools: SkillTool[],
   signal?: AbortSignal,
+  timeoutMs?: number,
 ): Promise<Completion> {
   const body: Record<string, unknown> = {
     model: cfg.model,
@@ -199,6 +253,7 @@ async function anthropicComplete(
     { 'x-api-key': cfg.apiKey, 'anthropic-version': '2023-06-01' },
     body,
     signal,
+    timeoutMs,
   )) as {
     content?: Array<{ type: string; text?: string; id?: string; name?: string; input?: unknown }>;
   };
@@ -258,6 +313,7 @@ async function openaiComplete(
   messages: unknown[],
   tools: SkillTool[],
   signal?: AbortSignal,
+  timeoutMs?: number,
 ): Promise<Completion> {
   const body: Record<string, unknown> = {
     model: cfg.model,
@@ -273,6 +329,7 @@ async function openaiComplete(
     { authorization: `Bearer ${cfg.apiKey}` },
     body,
     signal,
+    timeoutMs,
   )) as {
     choices?: Array<{
       message?: {
@@ -290,7 +347,14 @@ async function openaiComplete(
       calls: toolCalls.map((c) => {
         let args: Record<string, unknown> = {};
         try {
-          args = JSON.parse(c.function.arguments || '{}') as Record<string, unknown>;
+          // A non-compliant endpoint can emit `arguments: "null"` (or a JSON
+          // scalar/array), which parses to a non-object; keep only real objects
+          // so `buildToolArgs` never indexes into null. Mirrors the Anthropic
+          // path's `?? {}` guard.
+          const parsed: unknown = JSON.parse(c.function.arguments || '{}');
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            args = parsed as Record<string, unknown>;
+          }
         } catch {
           args = {};
         }
@@ -308,10 +372,25 @@ function openaiToolResults(results: ToolResult[]): unknown[] {
 
 // --- Tool execution --------------------------------------------------------
 
-function scopedToolEnv(): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env };
-  for (const key of SECRET_ENV_VARS) {
-    delete env[key];
+/**
+ * Build a tool subprocess's environment as an ALLOWLIST, not a denylist. A
+ * denylist that strips only the known provider keys still leaks every other
+ * secret in the server environment - e.g. a co-hosted proxy skill's
+ * `${GITHUB_TOKEN}` upstream credential - to a tool the model can be
+ * prompt-injected into abusing. Hand a tool only the safe operational base
+ * (plus whatever the skill explicitly opted into via `tool_env:`), and never a
+ * provider key.
+ */
+function scopedToolEnv(allow: readonly string[]): NodeJS.ProcessEnv {
+  const opted = new Set(allow);
+  const env: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value === undefined || PROVIDER_KEYS.has(key)) {
+      continue;
+    }
+    if (TOOL_ENV_ALLOWLIST.has(key) || key.startsWith('LC_') || opted.has(key)) {
+      env[key] = value;
+    }
   }
   return env;
 }
@@ -330,10 +409,14 @@ export function buildToolArgs(
   if (!cmd) {
     return { error: `tool "${tool.name}" has an empty command` };
   }
+  // Defensive: a malformed tool call can yield non-object args (null, a scalar,
+  // an array); never index into those. The callers already coerce, but this is
+  // the security primitive, so it must not assume a well-formed input.
+  const safeArgs = args && typeof args === 'object' && !Array.isArray(args) ? args : {};
   const argv = command;
   for (let index = 0; index < tool.parameters.length; index++) {
     const param = tool.parameters[index];
-    const value = args[param.name];
+    const value = safeArgs[param.name];
     if (value === undefined) {
       continue;
     }
@@ -355,6 +438,7 @@ async function runTool(
   call: ToolCall,
   skillDir: string,
   timeoutMs: number,
+  toolEnv: readonly string[],
   signal?: AbortSignal,
 ): Promise<string> {
   const built = buildToolArgs(tool, call.arguments);
@@ -365,7 +449,7 @@ async function runTool(
     cwd: skillDir,
     signal,
     timeoutMs,
-    env: scopedToolEnv(),
+    env: scopedToolEnv(toolEnv),
   });
   if (result.spawnError) {
     return `Error: ${result.spawnError.message}`;
@@ -384,7 +468,7 @@ export interface RunLlmOptions {
   userInput: string;
   /** Skill directory - the cwd for tool scripts. */
   skillDir: string;
-  /** Per-tool execution timeout. */
+  /** Per-operation timeout (ms): bounds each tool subprocess and each provider HTTP round-trip. */
   toolTimeoutMs: number;
   signal?: AbortSignal;
   env?: NodeJS.ProcessEnv;
@@ -403,7 +487,14 @@ export async function runLlm(options: RunLlmOptions): Promise<string> {
   const messages: unknown[] = [{ role: 'user', content: options.userInput }];
 
   if (tools.length === 0) {
-    const result = await complete(cfg, options.systemPrompt, messages, [], options.signal);
+    const result = await complete(
+      cfg,
+      options.systemPrompt,
+      messages,
+      [],
+      options.signal,
+      options.toolTimeoutMs,
+    );
     return result.type === 'text' ? result.text : '';
   }
 
@@ -411,7 +502,14 @@ export async function runLlm(options: RunLlmOptions): Promise<string> {
     if (options.signal?.aborted) {
       throw new LlmError('aborted');
     }
-    const result = await complete(cfg, options.systemPrompt, messages, tools, options.signal);
+    const result = await complete(
+      cfg,
+      options.systemPrompt,
+      messages,
+      tools,
+      options.signal,
+      options.toolTimeoutMs,
+    );
     if (result.type === 'text') {
       return result.text;
     }
@@ -421,7 +519,14 @@ export async function runLlm(options: RunLlmOptions): Promise<string> {
     for (const call of result.calls) {
       const tool = tools.find((t) => t.name === call.name);
       const content = tool
-        ? await runTool(tool, call, options.skillDir, options.toolTimeoutMs, options.signal)
+        ? await runTool(
+            tool,
+            call,
+            options.skillDir,
+            options.toolTimeoutMs,
+            options.spec.toolEnv ?? [],
+            options.signal,
+          )
         : `Error: unknown tool "${call.name}"`;
       toolResults.push({ callId: call.id, content });
     }

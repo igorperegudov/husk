@@ -29,15 +29,18 @@ Bun.serve({ port: 3000, fetch: handler });
 
 ### `HuskServerOptions`
 
-| Option         | Default       | Notes                                                                      |
-| -------------- | ------------- | -------------------------------------------------------------------------- |
-| `skills`       | -             | The loaded skills to serve.                                                |
-| `serviceName`  | `HUSK skills` | Shown on the index page and in OpenAPI.                                    |
-| `cors`         | `false`       | Emit permissive CORS headers (`*`). Opt in for cross-origin browser reads. |
-| `maxBodyBytes` | `52428800`    | Reject larger request bodies (50 MB).                                      |
-| `concurrency`  | `0`           | Max concurrent kernel invocations. `0` = unlimited.                        |
-| `allowedHosts` | -             | Allowlist of `Host` hostnames (anti-DNS-rebinding). Unset = any host.      |
-| `auth`         | -             | `(req) => boolean \| Promise<boolean>`. Return false → 401.                |
+| Option           | Default          | Notes                                                                       |
+| ---------------- | ---------------- | --------------------------------------------------------------------------- |
+| `skills`         | -                | The loaded skills to serve.                                                 |
+| `serviceName`    | `HUSK skills`    | Shown on the index page and in OpenAPI.                                     |
+| `version`        | `0.1.0`          | Version advertised in the generated OpenAPI spec.                           |
+| `cors`           | `false`          | Emit permissive CORS headers (`*`). Opt in for cross-origin browser reads.  |
+| `maxBodyBytes`   | `52428800`       | Reject larger request bodies (50 MB).                                       |
+| `maxOutputBytes` | `104857600`      | Reject kernel file output above this (single or total, 100 MB).             |
+| `maxStreamBytes` | `maxOutputBytes` | Truncate an SSE stream past this many bytes (bounds per-connection memory). |
+| `concurrency`    | `0`              | Max concurrent kernel invocations. `0` = unlimited.                         |
+| `allowedHosts`   | -                | Allowlist of `Host` hostnames (anti-DNS-rebinding). Unset = any host.       |
+| `auth`           | -                | `(req) => boolean \| Promise<boolean>`. Return false → 401.                 |
 
 ## Invoke a skill in-process
 

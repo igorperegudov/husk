@@ -79,6 +79,13 @@ export interface LlmSpec {
   maxToolRounds: number;
   /** Tools the model may call (may be empty for a pure prompt skill). */
   tools: SkillTool[];
+  /**
+   * Names of environment variables a tool subprocess is allowed to inherit, on
+   * top of the safe operational base. Tools get an allowlisted, secret-free env
+   * by default (no provider keys, no proxy `${VAR}` upstream credentials); this
+   * opts specific vars back in for tools that need their own credentials.
+   */
+  toolEnv?: string[];
 }
 
 /**
@@ -191,4 +198,11 @@ export interface InvokeOptions {
   env?: Record<string, string | undefined>;
   /** Invoked for each output chunk as it arrives (used for SSE streaming). */
   onData?: (event: StreamEvent) => void;
+  /**
+   * Max bytes to buffer from a `mode: proxy` upstream response before aborting
+   * (the buffered CLI/library path; the HTTP server streams proxy instead).
+   * Bounds memory the way the request-body and file-output caps do. Default
+   * 100 MB.
+   */
+  maxOutputBytes?: number;
 }

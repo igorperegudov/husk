@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo-lockup.png" alt="HUSK" width="360">
+  <img src="packages/docs/public/logo.svg" alt="HUSK" width="360">
 </p>
 
 # HUSK - HTTP Universal Skill Kernel

@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -90,6 +90,25 @@ describe('invokeSkill', () => {
     await result.cleanup();
   });
 
+  it('sanitizes a path-traversal upload filename before exposing HUSK_INPUT_FILENAME', async () => {
+    const skill = await makeSkill(
+      ['---', 'name: Echo', 'description: echo name', 'run: ./name.sh', 'input: file', '---'].join(
+        '\n',
+      ),
+      { 'name.sh': '#!/bin/sh\nprintf "%s" "$HUSK_INPUT_FILENAME"\n' },
+    );
+    const staged = join(skill.dir, 'staged-input');
+    await writeFile(staged, 'data');
+    const result = await invokeSkill(skill, {
+      file: { path: staged, filename: '../../etc/evil' },
+    });
+    expect(result.ok).toBe(true);
+    // Separators collapsed to `_` so a kernel can't use it to escape the workdir.
+    expect(result.stdout).not.toContain('/');
+    expect(result.stdout.trim()).toBe('.._.._etc_evil');
+    await result.cleanup();
+  });
+
   it('reports a non-zero exit as not ok', async () => {
     const skill = await makeSkill(
       ['---', 'name: Boom', 'description: fails', 'run: ./boom.sh', '---'].join('\n'),
@@ -121,6 +140,21 @@ describe('invokeSkill', () => {
     expect(result.ok).toBe(true);
     expect(result.stdout).toBe('hello from disk');
     await result.cleanup();
+  });
+
+  it('refuses to serve a static file that symlinks outside the skill folder', async () => {
+    // A bundled symlink (link.txt -> /outside/secret.txt) passes a lexical
+    // containment check but stat/readFile follow it; resolveInside must reject
+    // the escape so a static-file skill can't leak arbitrary server files.
+    const outside = await mkdtemp(join(tmpdir(), 'husk-secret-'));
+    dirs.push(outside);
+    const secret = join(outside, 'secret.txt');
+    await writeFile(secret, 'TOP SECRET');
+    const skill = await makeSkill(
+      ['---', 'name: Leak', 'description: leak', 'serve: ./link.txt', '---'].join('\n'),
+    );
+    await symlink(secret, join(skill.dir, 'link.txt'));
+    await expect(invokeSkill(skill, {})).rejects.toThrow(/escapes the skill directory/);
   });
 
   it('invokes a mode: llm skill, using the doc body as the system prompt', async () => {

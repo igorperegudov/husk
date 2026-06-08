@@ -49,14 +49,15 @@ run:                                 # list form, for args with spaces
 
 Set `mode: llm` (or just declare `tools`) and an LLM runs the skill instead of a script. The `SKILL.md` body becomes the system prompt; the request body is the user message.
 
-| Field             | Default          | Notes                                                              |
-| ----------------- | ---------------- | ------------------------------------------------------------------ |
-| `mode: llm`       | -                | Selects the LLM executor. Implied when `tools` is set.             |
-| `tools`           | -                | Scripts the model may call. See [LLM skills & tools](/skills/llm). |
-| `provider`        | `anthropic`      | `anthropic`, `openai`, `xai`, `google`, `deepseek`.                |
-| `model`           | provider default | The model to use.                                                  |
-| `max_tokens`      | `4096`           | Output token cap.                                                  |
-| `max_tool_rounds` | `10`             | Max LLM-to-tools rounds.                                           |
+| Field             | Default          | Notes                                                                                                |
+| ----------------- | ---------------- | ---------------------------------------------------------------------------------------------------- |
+| `mode: llm`       | -                | Selects the LLM executor. Implied by `tools` when no other mode is set.                              |
+| `tools`           | -                | Scripts the model may call. See [LLM skills & tools](/skills/llm).                                   |
+| `tool_env`        | `[]`             | Env var names a tool script may read (otherwise secret-free). See [LLM skills & tools](/skills/llm). |
+| `provider`        | `anthropic`      | `anthropic`, `openai`, `xai`, `google`, `deepseek`.                                                  |
+| `model`           | provider default | The model to use.                                                                                    |
+| `max_tokens`      | `4096`           | Output token cap.                                                                                    |
+| `max_tool_rounds` | `10`             | Max LLM-to-tools rounds.                                                                             |
 
 ```yaml
 ---

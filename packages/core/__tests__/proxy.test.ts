@@ -94,12 +94,48 @@ describe('proxyRequest', () => {
     expect(h.get('content-type')).toBe('application/json'); // passed through
   });
 
+  it('merges the incoming query into an upstream url that already has a query', async () => {
+    const fetchMock = vi.fn(async () => textResponse('ok', 200));
+    vi.stubGlobal('fetch', fetchMock);
+    const withQuery: ProxySpec = {
+      url: 'https://up.example/v1?key=abc',
+      headers: {},
+      forwardHeaders: [],
+    };
+    await proxyRequest(withQuery, { method: 'GET', headers: {}, query: '?x=y' });
+    const [calledUrl] = fetchMock.mock.calls[0] as [string, RequestInit];
+    // Plain string concat would yield `...?key=abc?x=y`; the merge keeps both params.
+    expect(calledUrl).toBe('https://up.example/v1?key=abc&x=y');
+  });
+
   it('throws ProxyError when a header env var is missing', async () => {
     delete process.env.UPSTREAM_KEY;
     vi.stubGlobal('fetch', vi.fn());
     await expect(proxyRequest(spec, { method: 'POST', headers: {}, body: 'x' })).rejects.toThrow(
       ProxyError,
     );
+  });
+
+  it('drops a cross-origin upstream Location (open-redirect guard), keeps same-origin', async () => {
+    const go: ProxySpec = { url: 'https://up.example/go', headers: {}, forwardHeaders: [] };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () => new Response(null, { status: 302, headers: { location: 'https://evil/p' } }),
+      ),
+    );
+    let res = await proxyRequest(go, { method: 'GET', headers: {} });
+    expect(res.headers.get('location')).toBeNull();
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(null, { status: 302, headers: { location: 'https://up.example/n' } }),
+      ),
+    );
+    res = await proxyRequest(go, { method: 'GET', headers: {} });
+    expect(res.headers.get('location')).toBe('https://up.example/n');
   });
 
   it('throws ProxyError when the upstream fetch fails', async () => {
@@ -140,6 +176,19 @@ describe('invokeSkill (proxy, buffered)', () => {
     const result = await invokeSkill(skill, { text: 'hi' });
     expect(result.ok).toBe(true);
     expect(result.stdout).toBe('hello upstream');
+    await result.cleanup();
+  });
+
+  it('rejects a buffered upstream response larger than maxOutputBytes', async () => {
+    process.env.UPSTREAM_KEY = 'k';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => textResponse('0123456789', 200)), // 10 bytes
+    );
+    const skill = await makeProxySkill(['name: P', 'description: d', 'proxy: https://up/x']);
+    const result = await invokeSkill(skill, { text: 'hi' }, { maxOutputBytes: 4 });
+    expect(result.ok).toBe(false);
+    expect(result.errorMessage).toContain('exceeds');
     await result.cleanup();
   });
 
@@ -186,8 +235,39 @@ describe('createFetchHandler (proxy)', () => {
     expect(res.status).toBe(201);
     expect(await res.text()).toBe('PONG');
     expect(res.headers.get('access-control-allow-origin')).toBe('*');
+    // Proxy passthrough also forbids MIME-sniffing, like every other response.
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
 
     const init = fetchMock.mock.calls[0][1] as RequestInit;
     expect((init.headers as Headers).get('x-api-key')).toBe('secret');
+  });
+
+  it('forces a download for a renderable (HTML) proxied upstream body', async () => {
+    process.env.UPSTREAM_KEY = 'k';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => textResponse('<h1>x</h1>', 200, 'text/html')),
+    );
+    const root = await mkdtemp(join(tmpdir(), 'husk-proxy-root-'));
+    dirs.push(root);
+    const skillDir = join(root, 'web');
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(
+      join(skillDir, 'SKILL.md'),
+      manifest([
+        'name: Web',
+        'description: d',
+        'proxy: https://up/page',
+        'headers:',
+        '  x-api-key: ${UPSTREAM_KEY}',
+      ]),
+    );
+    const { skills } = loadSkills(root);
+    const handler = createFetchHandler({ skills });
+    const res = await handler(new Request('http://h/skills/web', { method: 'POST', body: 'x' }));
+    // Reflected HTML from a proxied upstream must download, not render in our origin.
+    expect(res.headers.get('content-type')).toContain('text/html');
+    expect(res.headers.get('content-disposition')).toContain('attachment');
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
   });
 });

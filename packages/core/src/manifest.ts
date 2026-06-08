@@ -19,6 +19,10 @@ export class ManifestError extends Error {
   }
 }
 
+/** Largest accepted `timeout_ms`: setTimeout/AbortSignal.timeout overflow a 32-bit
+ * signed int beyond this and silently collapse to a 1ms delay. (~24.8 days.) */
+const MAX_TIMEOUT_MS = 2_147_483_647;
+
 /** Default LLM output token cap for `mode: llm` skills. */
 export const DEFAULT_MAX_TOKENS = 4096;
 /** Default cap on LLM-to-tools rounds for `mode: llm` skills. */
@@ -45,6 +49,7 @@ const KNOWN_KEYS = new Set([
   // LLM mode:
   'mode',
   'tools',
+  'tool_env',
   'provider',
   'model',
   'max_tokens',
@@ -128,10 +133,15 @@ function sanitizeMime(value: unknown): string | undefined {
 
 function requireString(fm: Record<string, unknown>, key: string): string {
   const value = fm[key];
-  if (typeof value !== 'string' || value.trim() === '') {
+  // Re-check emptiness AFTER stripping control chars: `trim()` removes only
+  // whitespace, so a value of all control characters (e.g. `name: ""`)
+  // would pass a `trim() !== ''` check yet strip to empty, breaking the
+  // non-empty guarantee this function's error message promises.
+  const cleaned = typeof value === 'string' ? stripControlChars(value.trim()) : '';
+  if (!cleaned) {
     throw new ManifestError(`SKILL.md: \`${key}\` is required and must be a non-empty string`);
   }
-  return stripControlChars(value.trim());
+  return cleaned;
 }
 
 /**
@@ -317,18 +327,60 @@ export function parseManifest(content: string, slug: string): SkillManifest {
   const hasProxy = typeof fm.proxy === 'string' || typeof fm.proxy_url === 'string';
   const modeField = typeof fm.mode === 'string' ? fm.mode : undefined;
 
+  // `tools:` is an LLM-only concept. Declaring it alongside an explicit non-llm
+  // mode (`script`/`static-file`/`proxy`, or an elisym alias) is contradictory:
+  // honoring it would coerce the skill into an unintended, token-spending llm
+  // endpoint and silently drop the declared `run:`/`serve:`. Reject it loudly
+  // rather than let `tools:` override the operator's explicit `mode:` - the same
+  // anti-coercion invariant the cascade below upholds for a missing target.
+  if (fm.tools !== undefined && modeField !== undefined && modeField !== 'llm') {
+    throw new ManifestError(
+      `SKILL.md: \`tools\` only applies to \`mode: llm\`, but \`mode: ${modeField}\` was set`,
+    );
+  }
+
+  // Same anti-coercion guard for `proxy:`/`proxy_url:`: it is proxy-mode-only, so
+  // declaring it under an explicit non-proxy `mode:` is contradictory and would
+  // silently drop the declared executor (a `mode: script` skill becoming a
+  // reverse proxy). Reject it rather than let the URL override the operator's
+  // explicit mode.
+  if (hasProxy && modeField !== undefined && modeField !== 'proxy') {
+    throw new ManifestError(
+      `SKILL.md: \`proxy\` only applies to \`mode: proxy\`, but \`mode: ${modeField}\` was set`,
+    );
+  }
+
   // Decide the executor. `proxy` is explicit (`mode: proxy` or a `proxy:` URL).
   // An LLM skill is explicit (`mode: llm` or a `tools` list) or the implicit
   // default when nothing else is declared - matching elisym, whose default is
-  // `llm`.
+  // `llm`. Crucially, both the `tools:` inference and the implicit `llm` default
+  // apply ONLY when no `mode:` was set: an explicitly-declared non-llm mode whose
+  // target is missing (a typo in `run:`/`serve:`) must reach its own error below,
+  // never get silently coerced into an unintended, unauthenticated,
+  // token-spending llm endpoint.
   let mode: SkillMode;
-  if (modeField === 'proxy' || hasProxy) {
+  if (modeField === 'proxy' || (modeField === undefined && hasProxy)) {
     mode = 'proxy';
-  } else if (modeField === 'llm' || fm.tools !== undefined || (!hasRun && !hasServe)) {
+  } else if (modeField === 'static-file') {
+    // Explicit `mode: static-file` with no serve target falls through to the
+    // missing-target guard below (clear error) rather than the `llm` default.
+    mode = 'static-file';
+  } else if (
+    modeField === 'llm' ||
+    (modeField === undefined && (fm.tools !== undefined || (!hasRun && !hasServe)))
+  ) {
     mode = 'llm';
-  } else if (hasServe && !hasRun) {
+  } else if (modeField === undefined && hasServe && !hasRun) {
+    // Implicit static-file: a bare `serve:` with no `mode:` and no `run:`. Gated
+    // on `modeField === undefined` so an explicit `mode: script` (etc.) with a
+    // stray `serve:` but a missing `run:` is NOT silently rerouted to
+    // static-file - it falls through to the missing-target guard below instead.
     mode = 'static-file';
   } else {
+    // Includes an explicit `mode: script` (or elisym `static-script`/
+    // `dynamic-script`) with a missing `run`/`command`/`script`: `toArgv` below
+    // throws a ManifestError instead of silently defaulting to `llm` or
+    // static-file.
     mode = 'script';
   }
 
@@ -364,6 +416,10 @@ export function parseManifest(content: string, slug: string): SkillManifest {
         DEFAULT_MAX_TOOL_ROUNDS,
       ),
       tools: parseTools(fm.tools),
+      // Extra env var names a tool subprocess is allowed to see. Tools otherwise
+      // receive an allowlisted, secret-free environment (see scopedToolEnv), so
+      // an operator opts in only the vars their own tool scripts genuinely need.
+      toolEnv: parseStringList(fm.tool_env, 'tool_env'),
     };
   }
 
@@ -408,13 +464,27 @@ export function parseManifest(content: string, slug: string): SkillManifest {
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
     throw new ManifestError('SKILL.md: `timeout_ms` must be a positive number');
   }
+  if (timeoutMs > MAX_TIMEOUT_MS) {
+    // setTimeout / AbortSignal.timeout cap at a 32-bit signed int; a larger delay
+    // silently overflows to 1ms, which would SIGKILL the kernel almost instantly -
+    // the opposite of the operator's intent. Reject it loudly instead.
+    throw new ManifestError(
+      `SKILL.md: \`timeout_ms\` must not exceed ${MAX_TIMEOUT_MS} (~24.8 days)`,
+    );
+  }
 
   const method = coerceEnum<HttpMethod>(fm.method, HTTP_METHODS, 'method') ?? 'POST';
 
+  // Derive the default route from the manifest name's slug - the SAME slug the
+  // loader uses as the skill's identity (`toSlug(name) || folderSlug`) - so the
+  // invoke route, the canonical card route, and the identity never diverge when
+  // the folder name and `name:` slugify differently. Fall back to the folder
+  // slug when `toSlug(name)` is empty.
+  const routeSlug = toSlug(name) || slug;
   let route =
     typeof fm.route === 'string' && fm.route.trim()
       ? stripControlChars(fm.route.trim())
-      : `/skills/${slug}`;
+      : `/skills/${routeSlug}`;
   if (!route.startsWith('/')) {
     route = `/${route}`;
   }

@@ -6,7 +6,7 @@ import {
   type Skill,
 } from '@elisymlabs/husk-core';
 import chalk from 'chalk';
-import { fail, loadOrReport, resolveSkillsDir } from '../util';
+import { fail, loadOrReport, parsePort, resolveSkillsDir } from '../util';
 
 export interface ServeOptions {
   port?: string;
@@ -30,18 +30,6 @@ function effectiveHost(opts: ServeOptions): { host: string; isLoopback: boolean 
     host,
     isLoopback: host === '127.0.0.1' || host === 'localhost' || host === '::1',
   };
-}
-
-/** Parse `--port`/`$HUSK_PORT` strictly so a typo can't silently bind a random port. */
-function parsePort(value: string | undefined): number {
-  if (value === undefined || value === '') {
-    return 3000;
-  }
-  const n = Number(value);
-  if (!Number.isInteger(n) || n < 1 || n > 65535) {
-    fail(`port must be an integer 1-65535 (got "${value}")`);
-  }
-  return n;
 }
 
 /** Parse `--concurrency` strictly so a typo can't silently disable the limiter. */

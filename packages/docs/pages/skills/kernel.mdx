@@ -34,18 +34,19 @@ For `file` output, stdout becomes an optional note (returned in the `x-husk-note
 | non-zero         | failure   | `500` with `{ error, stderr, exitCode }` |
 | killed (timeout) | timed out | `504`                                    |
 
-Empty stdout on a `text`/`json` skill that produced no file is treated as an error.
+A `file` skill that exits `0` but writes no file is treated as an error (`500`). For `text`/`json` skills, empty stdout is returned as-is - an empty `200` body (or `{}` for `json`).
 
 ## Environment variables
 
 HUSK sets these for the kernel (the full server environment, including any API keys you set, is also inherited):
 
-| Variable           | When           | Meaning                                       |
-| ------------------ | -------------- | --------------------------------------------- |
-| `HUSK_INPUT_FILE`  | `input: file`  | Path to the staged input file.                |
-| `HUSK_INPUT_MIME`  | `input: file`  | The upload's content type, if known.          |
-| `HUSK_OUTPUT_FILE` | `output: file` | Write a single file result here.              |
-| `HUSK_OUTPUT_DIR`  | `output: file` | Write one or more file results into this dir. |
+| Variable              | When           | Meaning                                       |
+| --------------------- | -------------- | --------------------------------------------- |
+| `HUSK_INPUT_FILE`     | `input: file`  | Path to the staged input file.                |
+| `HUSK_INPUT_MIME`     | `input: file`  | The upload's content type, if known.          |
+| `HUSK_INPUT_FILENAME` | `input: file`  | The upload's original filename, if provided.  |
+| `HUSK_OUTPUT_FILE`    | `output: file` | Write a single file result here.              |
+| `HUSK_OUTPUT_DIR`     | `output: file` | Write one or more file results into this dir. |
 
 :::note
 The same variables are also exported under their `ELISYM_*` names (`ELISYM_INPUT_FILE`, `ELISYM_OUTPUT_FILE`, `ELISYM_OUTPUT_DIR`) so kernels written for elisym agents run unchanged.

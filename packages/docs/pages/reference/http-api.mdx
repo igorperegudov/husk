@@ -72,15 +72,16 @@ Every response carries `x-husk-duration-ms`.
 
 ### Errors
 
-| Status | When                                         |
-| ------ | -------------------------------------------- |
-| `400`  | Malformed request.                           |
-| `401`  | `auth` hook rejected the request.            |
-| `404`  | Unknown path.                                |
-| `405`  | Known path, wrong method.                    |
-| `413`  | Request body over `maxBodyBytes`.            |
-| `500`  | Kernel failed (non-zero exit / spawn error). |
-| `504`  | Kernel exceeded `timeout_ms`.                |
+| Status | When                                                                      |
+| ------ | ------------------------------------------------------------------------- |
+| `401`  | `auth` hook rejected the request.                                         |
+| `403`  | `Host` header not in `allowedHosts` (the loopback DNS-rebinding guard).   |
+| `404`  | Unknown path.                                                             |
+| `405`  | Known path, wrong method.                                                 |
+| `413`  | Request body over `maxBodyBytes`, or kernel output over `maxOutputBytes`. |
+| `500`  | Kernel failed (non-zero exit / spawn error).                              |
+| `502`  | A proxy skill could not reach its upstream (or it returned a redirect).   |
+| `504`  | Kernel exceeded `timeout_ms`.                                             |
 
 Error bodies are JSON:
 
