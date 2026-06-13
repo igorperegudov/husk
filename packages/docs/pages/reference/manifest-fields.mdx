@@ -26,13 +26,14 @@ The complete list of `SKILL.md` frontmatter fields HUSK reads. HUSK-native field
 
 ## LLM behavior (`mode: llm`)
 
-| Field             | Type   | Default          | Notes                                               |
-| ----------------- | ------ | ---------------- | --------------------------------------------------- |
-| `tools`           | list   | -                | Scripts the model may call (see below).             |
-| `provider`        | string | `anthropic`      | `anthropic`, `openai`, `xai`, `google`, `deepseek`. |
-| `model`           | string | provider default | The model id.                                       |
-| `max_tokens`      | number | `4096`           | Output token cap (positive integer).                |
-| `max_tool_rounds` | number | `10`             | Max LLM-to-tools rounds (positive integer).         |
+| Field             | Type     | Default          | Notes                                                           |
+| ----------------- | -------- | ---------------- | --------------------------------------------------------------- |
+| `tools`           | list     | -                | Scripts the model may call (see below).                         |
+| `tool_env`        | string[] | `[]`             | Env var names a tool script may inherit; otherwise secret-free. |
+| `provider`        | string   | `anthropic`      | `anthropic`, `openai`, `xai`, `google`, `deepseek`.             |
+| `model`           | string   | provider default | The model id.                                                   |
+| `max_tokens`      | number   | `4096`           | Output token cap (positive integer).                            |
+| `max_tool_rounds` | number   | `10`             | Max LLM-to-tools rounds (positive integer).                     |
 
 Each `tools` entry: `name`, `description`, `command` (argv string or list), and optional `parameters` (each `name`, `description`, `required`). Full semantics in [LLM skills & tools](/skills/llm). The system prompt is the `SKILL.md` body.
 

@@ -81,8 +81,8 @@ The model may call tools several times; HUSK loops until it returns text or hits
 
 When the model calls a tool, HUSK builds the command like this:
 
-- The **first `required` parameter** is passed as a **positional** argument (`command... value`).
-- **Every other parameter** is passed as `--name value`.
+- The **first declared parameter** is passed as a **positional** argument (`command... value`) **when it is `required`**.
+- **Every other parameter** (and a first parameter that is not `required`) is passed as `--name value`.
 - A value that begins with `-` is **rejected** - so a model-supplied argument can never be parsed as a flag (argument-injection guard).
 
 So a tool `command: ['python3', 'check.py']` with the model calling `check_status(url="example.com")` runs:

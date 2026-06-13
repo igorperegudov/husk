@@ -21,8 +21,8 @@ husk serve          # serves every skill over HTTP on :3000
 ```
 
 ```sh
-curl -s -X POST http://localhost:3000/skills/uppercase --data 'hello'
-# HELLO
+curl -s -X POST http://localhost:3000/skills/hello --data 'world'
+# you said: world
 ```
 
 ## Three ideas

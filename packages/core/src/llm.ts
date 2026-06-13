@@ -396,9 +396,10 @@ function scopedToolEnv(allow: readonly string[]): NodeJS.ProcessEnv {
 }
 
 /**
- * Map an LLM tool call to a command argv. The first `required` parameter is a
- * positional argument; the rest are `--name value`. No value may begin with `-`
- * (so an LLM-supplied argument can never be parsed as a flag). Mirrors elisym.
+ * Map an LLM tool call to a command argv. The first declared parameter is a
+ * positional argument when it is `required`; every other parameter (and a
+ * non-required first one) is `--name value`. No value may begin with `-` (so an
+ * LLM-supplied argument can never be parsed as a flag). Mirrors elisym.
  */
 export function buildToolArgs(
   tool: SkillTool,

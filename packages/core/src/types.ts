@@ -60,9 +60,10 @@ export interface SkillTool {
   /** Command argv. `command[0]` is an interpreter or a path in the skill dir. */
   command: string[];
   /**
-   * Parameters the model fills in. The first `required` parameter is passed as a
-   * positional argument; the rest are passed as `--name value`. None may begin
-   * with `-` (argument-injection guard).
+   * Parameters the model fills in. The first declared parameter is passed as a
+   * positional argument when it is `required`; every other parameter (and a
+   * non-required first one) is passed as `--name value`. None may begin with `-`
+   * (argument-injection guard).
    */
   parameters: Array<{ name: string; description: string; required: boolean }>;
 }

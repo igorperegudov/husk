@@ -63,13 +63,14 @@ Set `mode: llm` (or just declare `tools`) and an LLM runs the skill instead of a
 script. The `SKILL.md` body is the system prompt; the request body is the user
 message. A skill with neither `run` nor `serve` defaults to `mode: llm`.
 
-| Field             | Default          | Meaning                                             |
-| ----------------- | ---------------- | --------------------------------------------------- |
-| `tools`           | -                | Scripts the model may call (see below).             |
-| `provider`        | `anthropic`      | `anthropic`, `openai`, `xai`, `google`, `deepseek`. |
-| `model`           | provider default | The model id.                                       |
-| `max_tokens`      | `4096`           | Output token cap.                                   |
-| `max_tool_rounds` | `10`             | Max LLM-to-tools rounds before giving up.           |
+| Field             | Default          | Meaning                                                     |
+| ----------------- | ---------------- | ----------------------------------------------------------- |
+| `tools`           | -                | Scripts the model may call (see below).                     |
+| `provider`        | `anthropic`      | `anthropic`, `openai`, `xai`, `google`, `deepseek`.         |
+| `model`           | provider default | The model id.                                               |
+| `max_tokens`      | `4096`           | Output token cap.                                           |
+| `max_tool_rounds` | `10`             | Max LLM-to-tools rounds before giving up.                   |
+| `tool_env`        | `[]`             | Env var names a tool script may inherit (allowlist opt-in). |
 
 ```yaml
 ---
@@ -91,14 +92,20 @@ explain the result in plain English.
 
 Each tool's `command` is an argv (`command[0]` is an interpreter on `PATH` or a
 path in the skill dir). When the model calls a tool, HUSK passes the first
-`required` parameter as a positional argument and the rest as `--name value`; a
-value beginning with `-` is rejected. The tool's stdout (exit 0) is fed back to
+declared parameter as a positional argument when it is `required`; every other
+parameter (and a first parameter that is not `required`) is passed as
+`--name value`. A value beginning with `-` is rejected. The tool's stdout (exit 0) is fed back to
 the model, which loops until it returns a final answer or hits `max_tool_rounds`.
 
 The provider API key is read from the environment at invoke time
 (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, ...). HUSK calls the provider's HTTP API
-directly and bundles no model or provider SDK. Tool scripts run with the provider
-keys stripped from their environment.
+directly and bundles no model or provider SDK. Tool scripts run with an
+allowlisted, secret-free environment: only safe operational variables (`PATH`,
+`HOME`, `LANG`, the `LC_*` locale family, ...) are passed through. Provider keys
+and every other server secret - including a proxy skill's `${VAR}` upstream
+credentials - are withheld. If a tool needs its own credential or config, opt
+those variables in explicitly with `tool_env:` (a list of variable names);
+provider keys can never be opted in.
 
 ### Proxy skills (`mode: proxy`)
 
@@ -274,8 +281,9 @@ The same skill folder runs unchanged as:
 - HUSK does not authenticate or rate-limit by default - add `auth` when
   embedding, or front the server with a gateway.
 - Kernels run with the server's full environment (including any API keys you
-  set). Only serve skills you trust. LLM tool scripts have the provider keys
-  stripped from their environment.
+  set). Only serve skills you trust. LLM tool scripts get an allowlisted,
+  secret-free environment - provider keys and every other server secret are
+  withheld; opt specific variables in with `tool_env:`.
 - `mode: llm` skills spend your provider tokens on every request. An
   unauthenticated public endpoint lets anyone spend them - gate LLM skills behind
   `auth` (when embedding) or a gateway.
