@@ -1,8 +1,7 @@
 # HUSK guide
 
 This guide covers the manifest format, the kernel I/O contract, the HTTP
-surface, deployment shapes, and compatibility with existing Agent Skills and
-elisym agents.
+surface, deployment shapes, and compatibility with existing Agent Skills.
 
 ## 1. Anatomy of a skill
 
@@ -163,10 +162,6 @@ HUSK runs your kernel as a child process. There is no SDK to import.
 - Non-zero exit = error: HTTP `500` (or `504` on timeout) with the kernel's
   stderr in the JSON body.
 
-Environment variables are also exposed under their `ELISYM_*` names
-(`ELISYM_INPUT_FILE`, `ELISYM_OUTPUT_FILE`, `ELISYM_OUTPUT_DIR`) so kernels
-written for elisym agents run unchanged.
-
 ### Examples
 
 ```sh
@@ -265,14 +260,9 @@ The same skill folder runs unchanged as:
   (`name` + `description` + a markdown body). A bare skill loads as `mode: llm`
   (the body is the system prompt); add `run:` for a script or `tools:` for an LLM
   with tools, without breaking its use as a documentation skill.
-- **elisym agents.** Point HUSK at an elisym agent's `skills/` folder and every
-  skill serves over HTTP - `llm` (with `tools`), `dynamic-script`,
-  `static-script`, and `static-file` alike. The loader maps `script`, `mode`,
-  `script_timeout_ms`, `input_mime`, `output_mime`, and `output_file`, carries
-  over the LLM fields (`tools`, `provider`, `model`, `max_tokens`,
-  `max_tool_rounds`), and exposes the `ELISYM_*` I/O env vars. Marketplace-only
-  fields (`price`, `token`, `capabilities`) are ignored - HUSK is the HTTP shell,
-  not the marketplace.
+- **Unknown fields are ignored.** Any frontmatter key HUSK does not recognize
+  (`price`, `token`, `capabilities`, ...) is preserved but not acted on - HUSK is
+  the HTTP shell, not a marketplace.
 
 ## 8. Limits & notes
 

@@ -37,7 +37,6 @@ const KNOWN_KEYS = new Set([
   'name',
   'description',
   'run',
-  'command',
   'serve',
   'input',
   'output',
@@ -60,11 +59,6 @@ const KNOWN_KEYS = new Set([
   'proxy_method',
   'headers',
   'forward_headers',
-  // elisym fallbacks, recognized for drop-in compatibility:
-  'script',
-  'script_timeout_ms',
-  'max_execution_secs',
-  'input_text',
 ]);
 
 /** Lowercase kebab-case slug from a human name. */
@@ -145,9 +139,9 @@ function requireString(fm: Record<string, unknown>, key: string): string {
 }
 
 /**
- * Turn a `run`/`command`/`script` value into an argv array. Accepts either a
- * YAML list (used verbatim) or a string (split on whitespace). For commands
- * with quoted/spaced arguments, prefer the list form in YAML.
+ * Turn a `run` value into an argv array. Accepts either a YAML list (used
+ * verbatim) or a string (split on whitespace). For commands with quoted/spaced
+ * arguments, prefer the list form in YAML.
  */
 function toArgv(value: unknown, source: string): string[] {
   if (Array.isArray(value)) {
@@ -310,9 +304,7 @@ function parseProxy(fm: Record<string, unknown>): ProxySpec {
 }
 
 /**
- * Parse and normalize a SKILL.md manifest. HUSK-native fields win; elisym
- * fields (`script`, `mode`, `script_timeout_ms`, `input_mime`, ...) are used as
- * fallbacks so an existing skill folder serves over HTTP with no edits.
+ * Parse and normalize a SKILL.md manifest into a {@link SkillManifest}.
  */
 export function parseManifest(content: string, slug: string): SkillManifest {
   const { frontmatter: fm } = parseFrontmatter(content);
@@ -320,15 +312,15 @@ export function parseManifest(content: string, slug: string): SkillManifest {
   const name = requireString(fm, 'name');
   const description = requireString(fm, 'description');
 
-  const runValue = fm.run ?? fm.command ?? fm.script;
-  const serveValue = fm.serve ?? (fm.mode === 'static-file' ? fm.output_file : undefined);
+  const runValue = fm.run;
+  const serveValue = fm.serve;
   const hasRun = runValue !== undefined;
   const hasServe = serveValue !== undefined;
   const hasProxy = typeof fm.proxy === 'string' || typeof fm.proxy_url === 'string';
   const modeField = typeof fm.mode === 'string' ? fm.mode : undefined;
 
   // `tools:` is an LLM-only concept. Declaring it alongside an explicit non-llm
-  // mode (`script`/`static-file`/`proxy`, or an elisym alias) is contradictory:
+  // mode (`script`/`static-file`/`proxy`) is contradictory:
   // honoring it would coerce the skill into an unintended, token-spending llm
   // endpoint and silently drop the declared `run:`/`serve:`. Reject it loudly
   // rather than let `tools:` override the operator's explicit `mode:` - the same
@@ -352,9 +344,9 @@ export function parseManifest(content: string, slug: string): SkillManifest {
 
   // Decide the executor. `proxy` is explicit (`mode: proxy` or a `proxy:` URL).
   // An LLM skill is explicit (`mode: llm` or a `tools` list) or the implicit
-  // default when nothing else is declared - matching elisym, whose default is
-  // `llm`. Crucially, both the `tools:` inference and the implicit `llm` default
-  // apply ONLY when no `mode:` was set: an explicitly-declared non-llm mode whose
+  // default when nothing else is declared. Crucially, both the `tools:` inference
+  // and the implicit `llm` default apply ONLY when no `mode:` was set: an
+  // explicitly-declared non-llm mode whose
   // target is missing (a typo in `run:`/`serve:`) must reach its own error below,
   // never get silently coerced into an unintended, unauthenticated,
   // token-spending llm endpoint.
@@ -377,27 +369,20 @@ export function parseManifest(content: string, slug: string): SkillManifest {
     // static-file - it falls through to the missing-target guard below instead.
     mode = 'static-file';
   } else {
-    // Includes an explicit `mode: script` (or elisym `static-script`/
-    // `dynamic-script`) with a missing `run`/`command`/`script`: `toArgv` below
+    // Includes an explicit `mode: script` with a missing `run`: `toArgv` below
     // throws a ManifestError instead of silently defaulting to `llm` or
     // static-file.
     mode = 'script';
   }
 
-  let runSource = 'script';
-  if (fm.run !== undefined) {
-    runSource = 'run';
-  } else if (fm.command !== undefined) {
-    runSource = 'command';
-  }
-  const argv = mode === 'script' ? toArgv(runValue, runSource) : [];
+  const argv = mode === 'script' ? toArgv(runValue, 'run') : [];
   const serveFile =
     mode === 'static-file' && typeof serveValue === 'string' ? serveValue.trim() : undefined;
   if (mode === 'static-file' && !serveFile) {
     // Caught here rather than crashing at invoke when `resolveInside` gets a
-    // non-string path (e.g. `mode: static-file` with a numeric `output_file`).
+    // non-string path (e.g. `mode: static-file` with a numeric `serve`).
     throw new ManifestError(
-      'SKILL.md: a `static-file` skill needs `serve` (or `output_file`) set to a non-empty file path',
+      'SKILL.md: a `static-file` skill needs `serve` set to a non-empty file path',
     );
   }
 
@@ -428,16 +413,10 @@ export function parseManifest(content: string, slug: string): SkillManifest {
   const inputMime = sanitizeMime(fm.input_mime);
   const outputMime = sanitizeMime(fm.output_mime);
 
-  // Resolve input kind: explicit field, then elisym mode/mime heuristics.
+  // Resolve input kind: explicit field, then a static-file/MIME heuristic.
   let input = coerceEnum<SkillInputKind>(fm.input, INPUT_KINDS, 'input');
   if (!input) {
-    const mode = typeof fm.mode === 'string' ? fm.mode : undefined;
-    if (
-      serveFile ||
-      mode === 'static-script' ||
-      mode === 'static-file' ||
-      fm.input_text === 'none'
-    ) {
+    if (mode === 'static-file') {
       input = 'none';
     } else if (inputMime && inputMime !== 'none' && !isTextMime(inputMime)) {
       input = 'file';
@@ -452,14 +431,10 @@ export function parseManifest(content: string, slug: string): SkillManifest {
     output = outputMime && !isTextMime(outputMime) ? 'file' : 'text';
   }
 
-  // Resolve timeout: husk `timeout_ms`, then elisym equivalents.
+  // Resolve timeout: explicit `timeout_ms`, else the default.
   let timeoutMs = DEFAULT_TIMEOUT_MS;
   if (typeof fm.timeout_ms === 'number') {
     timeoutMs = fm.timeout_ms;
-  } else if (typeof fm.script_timeout_ms === 'number') {
-    timeoutMs = fm.script_timeout_ms;
-  } else if (typeof fm.max_execution_secs === 'number') {
-    timeoutMs = fm.max_execution_secs * 1000;
   }
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
     throw new ManifestError('SKILL.md: `timeout_ms` must be a positive number');
@@ -497,7 +472,7 @@ export function parseManifest(content: string, slug: string): SkillManifest {
 
   const extra: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(fm)) {
-    if (!KNOWN_KEYS.has(key) && key !== 'output_file') {
+    if (!KNOWN_KEYS.has(key)) {
       extra[key] = value;
     }
   }

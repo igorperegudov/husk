@@ -410,10 +410,10 @@ async function invokeProxy(
  *
  * I/O contract handed to the kernel:
  * - `text` input  -> piped to stdin.
- * - `file` input  -> staged at `HUSK_INPUT_FILE` (+ `ELISYM_INPUT_FILE` alias).
+ * - `file` input  -> staged at `HUSK_INPUT_FILE`.
  * - `text`/`json` output -> read from stdout.
  * - `file` output -> kernel writes `HUSK_OUTPUT_FILE` (single) or files into
- *   `HUSK_OUTPUT_DIR` (many). Aliased as `ELISYM_OUTPUT_*` for compatibility.
+ *   `HUSK_OUTPUT_DIR` (many).
  *
  * The caller owns any staged input file; `result.cleanup()` removes only the
  * temp output workspace this call created. Always await `cleanup()`.
@@ -446,7 +446,6 @@ export async function invokeSkill(
 
   if (input.file) {
     env.HUSK_INPUT_FILE = input.file.path;
-    env.ELISYM_INPUT_FILE = input.file.path;
     if (input.file.mime) {
       env.HUSK_INPUT_MIME = input.file.mime;
     }
@@ -468,8 +467,6 @@ export async function invokeSkill(
     await mkdir(outputDir, { recursive: true });
     env.HUSK_OUTPUT_FILE = outputFile;
     env.HUSK_OUTPUT_DIR = outputDir;
-    env.ELISYM_OUTPUT_FILE = outputFile;
-    env.ELISYM_OUTPUT_DIR = outputDir;
   }
 
   const cleanup = workdir

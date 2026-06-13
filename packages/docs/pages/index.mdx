@@ -17,7 +17,7 @@ curl -X POST http://localhost:3000/skills/uppercase --data 'hello'
 
 ## Three ideas
 
-1. **A skill is a folder, not a plugin.** The format is compatible with Agent Skills (Claude Code, Codex, Cursor): one `SKILL.md` manifest, any language. Existing skill folders - including [elisym](https://elisym.network) agents - serve unchanged.
+1. **A skill is a folder, not a plugin.** The format is compatible with Agent Skills (Claude Code, Codex, Cursor): one `SKILL.md` manifest, any language. Existing skill folders serve unchanged.
 2. **A script, or an LLM with tools.** A skill is a script you wrote, or `mode: llm` - where an LLM runs the skill using the `SKILL.md` body as its system prompt and calls the [tools](/skills/llm) you declare. Same folder, same HTTP surface.
 3. **One long-lived node on Bun.** Start the server and every skill is reachable over HTTP. The _same_ folder also runs as a one-shot serverless function or inside a container with no redesign.
 
@@ -25,7 +25,7 @@ curl -X POST http://localhost:3000/skills/uppercase --data 'hello'
 
 - Not a framework you code against - there is no SDK, no base class, no decorator. A skill is data plus a kernel.
 - Not a model host - for `mode: llm` skills HUSK calls your chosen provider with your API key; it bundles no model and no provider SDK.
-- Not a marketplace - HUSK is the HTTP shell. Discovery, payments, and identity live in protocols like [elisym](https://elisym.network), not here.
+- Not a marketplace - HUSK is the HTTP shell. Discovery, payments, and identity live in separate protocols, not here.
 
 ## Pick your path
 

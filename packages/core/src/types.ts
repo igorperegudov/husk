@@ -90,9 +90,7 @@ export interface LlmSpec {
 }
 
 /**
- * A parsed, normalized skill manifest. Built from `SKILL.md` frontmatter with
- * HUSK-native fields taking priority and elisym fields accepted as fallbacks so
- * existing skill folders serve unchanged.
+ * A parsed, normalized skill manifest, built from `SKILL.md` frontmatter.
  */
 export interface SkillManifest {
   /** Human-facing name (e.g. "Uppercase"). */

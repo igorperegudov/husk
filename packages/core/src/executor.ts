@@ -44,7 +44,7 @@ export interface RunResult {
  * so shell metacharacters in arguments are inert. The caller is responsible for
  * interpreting `code` / `spawnError`.
  *
- * Hardening carried over from the elisym runtime: a hard timeout that SIGKILLs,
+ * Hardening: a hard timeout that SIGKILLs,
  * a bounded output buffer, a UTF-8 decoder that survives chunk boundaries, and
  * deterministic stdin closing so kernels never hang waiting for input.
  */

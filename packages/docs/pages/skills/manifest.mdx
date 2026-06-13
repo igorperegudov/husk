@@ -68,7 +68,7 @@ mode: llm
 You are a concise, helpful assistant. Answer in plain text.
 ```
 
-A skill with **neither `run` nor `serve`** defaults to `mode: llm` - so a bare prompt skill, or any elisym `llm`-mode skill, just works. Full details in [LLM skills & tools](/skills/llm).
+A skill with **neither `run` nor `serve`** defaults to `mode: llm` - so a bare prompt skill, or any `llm`-mode skill, just works. Full details in [LLM skills & tools](/skills/llm).
 
 ## Proxy mode
 
@@ -119,6 +119,6 @@ See [The kernel I/O contract](/skills/kernel) for exactly how each value flows.
 
 ## Unknown fields are ignored
 
-Any frontmatter key HUSK does not recognize is preserved but ignored. That is what makes existing Agent Skills and elisym manifests load unchanged - marketplace fields like `price`, `token`, and `capabilities` are simply skipped. See [Compatibility](/reference/compatibility).
+Any frontmatter key HUSK does not recognize is preserved but ignored. That is what makes existing Agent Skills manifests load unchanged - extra fields like `price`, `token`, and `capabilities` are simply skipped. See [Compatibility](/reference/compatibility).
 
 A complete field table lives in the [manifest fields reference](/reference/manifest-fields).

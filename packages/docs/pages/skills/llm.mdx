@@ -2,8 +2,6 @@
 
 A skill does not have to be a script you wrote. With `mode: llm`, **the LLM runs the skill**: the `SKILL.md` body becomes its system prompt, the request body is the user's message, and the model answers - optionally calling the `tools` you declare. Each tool is an external script. HUSK runs the tool, feeds the output back to the model, and loops until the model produces a final answer.
 
-This is the same model elisym agents use, served over HTTP.
-
 ## A pure-prompt skill
 
 The simplest LLM skill has no tools - just a system prompt:

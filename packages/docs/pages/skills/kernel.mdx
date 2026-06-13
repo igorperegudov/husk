@@ -48,10 +48,6 @@ HUSK sets these for the kernel (the full server environment, including any API k
 | `HUSK_OUTPUT_FILE`    | `output: file` | Write a single file result here.              |
 | `HUSK_OUTPUT_DIR`     | `output: file` | Write one or more file results into this dir. |
 
-:::note
-The same variables are also exported under their `ELISYM_*` names (`ELISYM_INPUT_FILE`, `ELISYM_OUTPUT_FILE`, `ELISYM_OUTPUT_DIR`) so kernels written for elisym agents run unchanged.
-:::
-
 ## Examples by shape
 
 **text → text**
@@ -87,7 +83,7 @@ date -u +%Y-%m-%dT%H:%M:%SZ
 
 ## How the kernel is run
 
-The runner is deliberately strict, carried over from the elisym runtime:
+The runner is deliberately strict:
 
 - **No shell.** The command is spawned as an argv array (`shell: false`), so pipes, globs, `$VAR`, `&&`, and redirects in the command itself do nothing - put that logic inside the script.
 - **Hard timeout.** A kernel past `timeout_ms` is killed with `SIGKILL`.

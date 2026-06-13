@@ -29,7 +29,7 @@ curl -s -X POST http://localhost:3000/skills/hello --data 'world'
 
 1. **A skill is a folder, not a plugin.** The format is compatible with Agent
    Skills (Claude Code, Codex, Cursor): one `SKILL.md` manifest, any language.
-   Existing skill folders - including elisym agents - serve unchanged.
+   Existing skill folders serve unchanged.
 2. **A script, or an LLM with tools.** A skill is a script you wrote, or
    `mode: llm` - where an LLM runs the skill using the `SKILL.md` body as its
    system prompt and calls the tools you declare. Same folder, same HTTP surface.
@@ -179,7 +179,7 @@ Bun.serve({ port: 3000, fetch });
 ```
 
 See [`GUIDE.md`](./GUIDE.md) for the full manifest reference, deployment
-patterns, and elisym compatibility notes.
+patterns, and compatibility notes.
 
 ## Development
 

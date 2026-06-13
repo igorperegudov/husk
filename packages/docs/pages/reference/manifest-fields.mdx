@@ -1,6 +1,6 @@
 # Manifest fields
 
-The complete list of `SKILL.md` frontmatter fields HUSK reads. HUSK-native fields take priority; elisym fields are accepted as fallbacks. Any unrecognized key is preserved but ignored.
+The complete list of `SKILL.md` frontmatter fields HUSK reads. Any unrecognized key is preserved but ignored.
 
 ## Identity
 
@@ -70,21 +70,6 @@ Full semantics in [Proxy skills](/skills/proxy).
 | `method` | enum   | `POST`           | `GET`, `POST`, `PUT`, `PATCH`, or `DELETE`.  |
 | `route`  | string | `/skills/<slug>` | Custom invocation path; must start with `/`. |
 
-## elisym fallbacks
+## Unknown fields
 
-These are read only when the HUSK-native field is absent, so existing elisym skill folders load unchanged:
-
-| elisym field                 | Mapped to                                   |
-| ---------------------------- | ------------------------------------------- |
-| `script`                     | `run`                                       |
-| `command`                    | `run`                                       |
-| `mode: llm`                  | `mode: llm` (with `tools`, `provider`, ...) |
-| `mode: dynamic-script`       | a script skill (`input` from `input_mime`)  |
-| `mode: static-script`        | a script skill with `input: none`           |
-| `mode: static-file`          | `serve` (from `output_file`)                |
-| `script_timeout_ms`          | `timeout_ms`                                |
-| `max_execution_secs`         | `timeout_ms` (× 1000)                       |
-| `input_mime` / `output_mime` | input/output kind + response MIME           |
-| `input_text: none`           | `input: none`                               |
-
-Marketplace-only fields - `price`, `token`, `mint`, `capabilities`, `rate_limit` - are **ignored** (preserved but not acted on). The LLM fields (`tools`, `provider`, `model`, `max_tokens`, `max_tool_rounds`) are honored. See [Compatibility](/reference/compatibility).
+Any frontmatter key not listed above (`price`, `token`, `capabilities`, ...) is preserved in the skill's `extra` but never acted on. See [Compatibility](/reference/compatibility).

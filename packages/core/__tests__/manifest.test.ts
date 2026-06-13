@@ -44,17 +44,16 @@ describe('parseManifest', () => {
     expect(m.argv).toEqual(['python3', 'main.py']);
   });
 
-  it('maps elisym dynamic-script fields (drop-in compatibility)', () => {
+  it('derives file I/O from MIME hints and preserves unknown fields', () => {
     const m = parseManifest(
       [
         '---',
         'name: Background Removal',
         'description: remove bg',
-        'mode: dynamic-script',
-        'script: ./scripts/remove-bg.sh',
+        'run: ./scripts/remove-bg.sh',
         'input_mime: image/*',
         'output_mime: image/png',
-        'script_timeout_ms: 300000',
+        'timeout_ms: 300000',
         'price: 0.5',
         'token: usdc',
         '---',
@@ -66,21 +65,14 @@ describe('parseManifest', () => {
     expect(m.output).toBe('file');
     expect(m.timeoutMs).toBe(300_000);
     expect(m.outputMime).toBe('image/png');
-    // Unknown marketplace fields are preserved but ignored by HUSK.
+    // Unknown fields are preserved but ignored by HUSK.
     expect(m.extra.price).toBe(0.5);
     expect(m.extra.token).toBe('usdc');
   });
 
-  it('treats static-script mode as no input', () => {
+  it('honors explicit input: none on a script skill', () => {
     const m = parseManifest(
-      [
-        '---',
-        'name: now',
-        'description: time',
-        'mode: static-script',
-        'script: ./now.sh',
-        '---',
-      ].join('\n'),
+      ['---', 'name: now', 'description: time', 'run: ./now.sh', 'input: none', '---'].join('\n'),
       'now',
     );
     expect(m.input).toBe('none');
@@ -97,7 +89,7 @@ describe('parseManifest', () => {
   });
 
   it('rejects explicit mode: static-file with no serve target (not silent llm fallback)', () => {
-    // A typo'd `serve:`/`output_file:` must error, not coerce to a token-spending
+    // A typo'd `serve:` must error, not coerce to a token-spending
     // LLM skill via the implicit default.
     expect(() =>
       parseManifest(
@@ -107,7 +99,7 @@ describe('parseManifest', () => {
     ).toThrow(ManifestError);
   });
 
-  it('rejects explicit mode: script with no run/command (not silent llm fallback)', () => {
+  it('rejects explicit mode: script with no run (not silent llm fallback)', () => {
     // A typo'd `run:` (e.g. `rnu:`) under an explicit `mode: script` must error
     // rather than fall through to the implicit, token-spending LLM default.
     expect(() =>
@@ -239,7 +231,7 @@ describe('parseManifest', () => {
     expect(m.input).toBe('text');
   });
 
-  it('parses a tools-based llm skill (elisym drop-in, no explicit mode)', () => {
+  it('parses a tools-based llm skill (no explicit mode)', () => {
     const m = parseManifest(
       [
         '---',
