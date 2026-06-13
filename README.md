@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="packages/docs/public/logo.svg" alt="HUSK" width="360">
+</p>
+
 # HUSK - HTTP Universal Skill Kernel
 
 > Point a long-lived [Bun](https://bun.sh) process at a folder of skills. Every
