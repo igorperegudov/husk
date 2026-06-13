@@ -190,4 +190,4 @@ bun test             # run the test suite
 bun run qa           # build + test + typecheck + lint + format + spell
 ```
 
-Built by [elisym labs](https://github.com/elisymlabs). MIT licensed.
+Built by [elisym labs](https://github.com/igorperegudov). MIT licensed.

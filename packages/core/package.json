@@ -12,15 +12,15 @@
     "kernel",
     "skills"
   ],
-  "homepage": "https://github.com/elisymlabs/husk",
+  "homepage": "https://github.com/igorperegudov/husk",
   "bugs": {
-    "url": "https://github.com/elisymlabs/husk/issues"
+    "url": "https://github.com/igorperegudov/husk/issues"
   },
   "license": "MIT",
   "author": "elisym labs",
   "repository": {
     "type": "git",
-    "url": "https://github.com/elisymlabs/husk.git",
+    "url": "https://github.com/igorperegudov/husk.git",
     "directory": "packages/core"
   },
   "files": [

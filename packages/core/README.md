@@ -1,6 +1,6 @@
 # @elisym/husk-core
 
-The engine behind [HUSK](https://github.com/elisymlabs/husk). It loads a folder
+The engine behind [HUSK](https://github.com/igorperegudov/husk). It loads a folder
 of agent skills, invokes their kernels with a uniform stdin/stdout/file
 contract, and serves them over HTTP with a Web-standard `fetch` handler.
 
@@ -44,7 +44,7 @@ await result.cleanup();
 - `generateOpenApi(skills, options)` - build an OpenAPI 3.1 document.
 - `toCard(skill)` / `mimeFromPath(path)` - small helpers.
 
-See the [HUSK guide](https://github.com/elisymlabs/husk/blob/main/GUIDE.md) for
+See the [HUSK guide](https://github.com/igorperegudov/husk/blob/main/GUIDE.md) for
 the manifest reference and the kernel I/O contract.
 
-MIT licensed, by [elisym labs](https://github.com/elisymlabs).
+MIT licensed, by [elisym labs](https://github.com/igorperegudov).

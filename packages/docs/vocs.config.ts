@@ -14,21 +14,21 @@ export default defineConfig({
   // and exposes the docs (and repo) as an MCP source.
   mcp: {
     enabled: true,
-    sources: [McpSource.github({ name: 'husk', repo: 'elisymlabs/husk' })],
+    sources: [McpSource.github({ name: 'husk', repo: 'igorperegudov/husk' })],
   },
   editLink: {
-    link: 'https://github.com/elisymlabs/husk/edit/main/packages/docs/pages/:path',
+    link: 'https://github.com/igorperegudov/husk/edit/main/packages/docs/pages/:path',
     text: 'Edit on GitHub',
   },
   socials: [
-    { icon: 'github', link: 'https://github.com/elisymlabs/husk' },
+    { icon: 'github', link: 'https://github.com/igorperegudov/husk' },
     { icon: 'x', link: 'https://twitter.com/elisymlabs' },
   ],
   topNav: [
     { text: 'Docs', link: '/', match: '/' },
     { text: 'Quickstart', link: '/quickstart' },
     { text: 'CLI', link: '/cli' },
-    { text: 'GitHub', link: 'https://github.com/elisymlabs/husk' },
+    { text: 'GitHub', link: 'https://github.com/igorperegudov/husk' },
   ],
   sidebar: [
     {

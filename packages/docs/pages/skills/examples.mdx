@@ -1,6 +1,6 @@
 # Examples
 
-A handful of small skills that together cover every mode. Each is a folder with a `SKILL.md` and a kernel; the full set ships in the [`examples/`](https://github.com/elisymlabs/husk/tree/main/examples) directory of the repo.
+A handful of small skills that together cover every mode. Each is a folder with a `SKILL.md` and a kernel; the full set ships in the [`examples/`](https://github.com/igorperegudov/husk/tree/main/examples) directory of the repo.
 
 :::file-tree
 
@@ -208,7 +208,7 @@ curl -X POST localhost:3000/skills/anthropic-proxy \
 ## Run them all
 
 ```bash
-git clone https://github.com/elisymlabs/husk
+git clone https://github.com/igorperegudov/husk
 cd husk && bun install && bun run build
 ANTHROPIC_API_KEY=sk-... bun packages/cli/dist/index.js serve examples
 ```
