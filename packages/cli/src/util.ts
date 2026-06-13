@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { loadSkills, type LoadResult } from '@elisymlabs/husk-core';
+import { loadSkills, type LoadResult } from '@elisym/husk-core';
 import chalk from 'chalk';
 
 /** Resolve the skills directory: an explicit arg, else `./skills`, else `.`. */

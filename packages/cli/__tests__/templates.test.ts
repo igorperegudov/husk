@@ -1,4 +1,4 @@
-import { parseManifest } from '@elisymlabs/husk-core';
+import { parseManifest } from '@elisym/husk-core';
 import { describe, expect, it } from 'vitest';
 import { dockerfile, scaffoldSkill, type Lang } from '../src/templates';
 

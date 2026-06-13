@@ -26,7 +26,7 @@ husk call site-status -i "example.com"
 That is the shape a serverless function wants: receive input, run once, return output, exit. Because the engine's HTTP handler is a Web-standard `fetch` function, you can also mount it directly in environments that speak `Request`/`Response`:
 
 ```ts
-import { loadSkills, createFetchHandler } from '@elisymlabs/husk-core';
+import { loadSkills, createFetchHandler } from '@elisym/husk-core';
 
 const { skills } = loadSkills('./skills');
 const handler = createFetchHandler({ skills });

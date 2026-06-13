@@ -1,6 +1,6 @@
 import { chmodSync, constants, existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
-import { stripControlChars } from '@elisymlabs/husk-core';
+import { stripControlChars } from '@elisym/husk-core';
 import chalk from 'chalk';
 import { scaffoldSkill, type Lang } from '../templates';
 import { fail } from '../util';

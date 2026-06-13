@@ -1,4 +1,4 @@
-import { toSlug } from '@elisymlabs/husk-core';
+import { toSlug } from '@elisym/husk-core';
 
 export type Lang = 'bash' | 'python' | 'ts';
 
@@ -161,7 +161,7 @@ export function dockerfile(skillsDir: string, port: number): string {
     'WORKDIR /app',
     '',
     '# Install the HUSK CLI globally.',
-    'RUN bun add -g @elisymlabs/husk',
+    'RUN bun add -g @elisym/husk',
     '',
     '# If your kernels need other runtimes (python3, ffmpeg, ...), install them here:',
     '# RUN apt-get update && apt-get install -y python3 && rm -rf /var/lib/apt/lists/*',

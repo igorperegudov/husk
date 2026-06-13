@@ -13,7 +13,7 @@ FROM oven/bun:1
 WORKDIR /app
 
 # Install the HUSK CLI globally.
-RUN bun add -g @elisymlabs/husk
+RUN bun add -g @elisym/husk
 
 # If your kernels need other runtimes (python3, ffmpeg, ...), install them here:
 # RUN apt-get update && apt-get install -y python3 && rm -rf /var/lib/apt/lists/*

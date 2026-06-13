@@ -213,7 +213,7 @@ them, then a final `event: done` with `{ ok, exitCode }`.
 `createFetchHandler` returns a standard `(Request) => Promise<Response>`:
 
 ```ts
-import { loadSkills, createFetchHandler } from '@elisymlabs/husk-core';
+import { loadSkills, createFetchHandler } from '@elisym/husk-core';
 
 const { skills, errors } = loadSkills('./skills');
 errors.forEach((e) => console.warn(`skipped ${e.dir}: ${e.message}`));
@@ -232,7 +232,7 @@ Bun.serve({ port: 3000, fetch });
 You can also invoke a skill directly without HTTP:
 
 ```ts
-import { loadSkill, invokeSkill } from '@elisymlabs/husk-core';
+import { loadSkill, invokeSkill } from '@elisym/husk-core';
 
 const skill = loadSkill('./skills/uppercase');
 const result = await invokeSkill(skill, { text: 'hello' });

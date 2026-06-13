@@ -1,9 +1,9 @@
 # Library (husk-core)
 
-The CLI is a thin shell over [`@elisymlabs/husk-core`](https://www.npmjs.com/package/@elisymlabs/husk-core), the engine. Use the library directly when you want to embed the server, add authentication, or invoke skills in-process.
+The CLI is a thin shell over [`@elisym/husk-core`](https://www.npmjs.com/package/@elisym/husk-core), the engine. Use the library directly when you want to embed the server, add authentication, or invoke skills in-process.
 
 ```bash
-bun add @elisymlabs/husk-core
+bun add @elisym/husk-core
 ```
 
 ## Serve skills over HTTP
@@ -11,7 +11,7 @@ bun add @elisymlabs/husk-core
 `createFetchHandler` returns a Web-standard `(Request) => Promise<Response>`, so it runs under Bun, Deno, Cloudflare Workers, or a Node adapter.
 
 ```ts
-import { loadSkills, createFetchHandler } from '@elisymlabs/husk-core';
+import { loadSkills, createFetchHandler } from '@elisym/husk-core';
 
 const { skills, errors } = loadSkills('./skills');
 errors.forEach((e) => console.warn(`skipped ${e.dir}: ${e.message}`));
@@ -45,7 +45,7 @@ Bun.serve({ port: 3000, fetch: handler });
 ## Invoke a skill in-process
 
 ```ts
-import { loadSkill, invokeSkill } from '@elisymlabs/husk-core';
+import { loadSkill, invokeSkill } from '@elisym/husk-core';
 
 const skill = loadSkill('./skills/uppercase');
 const result = await invokeSkill(skill, { text: 'hello' });

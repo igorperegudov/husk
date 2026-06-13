@@ -1,20 +1,20 @@
-# @elisymlabs/husk-core
+# @elisym/husk-core
 
 The engine behind [HUSK](https://github.com/elisymlabs/husk). It loads a folder
 of agent skills, invokes their kernels with a uniform stdin/stdout/file
 contract, and serves them over HTTP with a Web-standard `fetch` handler.
 
-This is the library most people consume through the [`@elisymlabs/husk`](https://www.npmjs.com/package/@elisymlabs/husk)
+This is the library most people consume through the [`@elisym/husk`](https://www.npmjs.com/package/@elisym/husk)
 CLI. Use it directly when you want to embed the server or run skills in-process.
 
 ```sh
-bun add @elisymlabs/husk-core
+bun add @elisym/husk-core
 ```
 
 ## Serve skills over HTTP
 
 ```ts
-import { loadSkills, createFetchHandler } from '@elisymlabs/husk-core';
+import { loadSkills, createFetchHandler } from '@elisym/husk-core';
 
 const { skills } = loadSkills('./skills');
 Bun.serve({ port: 3000, fetch: createFetchHandler({ skills }) });
@@ -26,7 +26,7 @@ Deno, Cloudflare Workers, or a Node adapter.
 ## Invoke a skill in-process
 
 ```ts
-import { loadSkill, invokeSkill } from '@elisymlabs/husk-core';
+import { loadSkill, invokeSkill } from '@elisym/husk-core';
 
 const skill = loadSkill('./skills/uppercase');
 const result = await invokeSkill(skill, { text: 'hello' });

@@ -8,7 +8,7 @@ import {
   toSlug,
   type InvokeInput,
   type Skill,
-} from '@elisymlabs/husk-core';
+} from '@elisym/husk-core';
 import chalk from 'chalk';
 import { fail, loadOrReport, resolveSkillsDir } from '../util';
 

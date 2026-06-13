@@ -1,10 +1,5 @@
 import { watch } from 'node:fs';
-import {
-  createFetchHandler,
-  loadSkills,
-  type FetchHandler,
-  type Skill,
-} from '@elisymlabs/husk-core';
+import { createFetchHandler, loadSkills, type FetchHandler, type Skill } from '@elisym/husk-core';
 import chalk from 'chalk';
 import { fail, loadOrReport, parsePort, resolveSkillsDir } from '../util';
 

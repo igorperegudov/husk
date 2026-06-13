@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="packages/docs/public/logo.svg" alt="HUSK" width="360">
-</p>
-
 # HUSK - HTTP Universal Skill Kernel
 
 > Point a long-lived [Bun](https://bun.sh) process at a folder of skills. Every
@@ -15,7 +11,7 @@ over HTTP. No SDK to learn, no rewrite: the shell wraps your core code and
 publishes it as a service.
 
 ```sh
-bun add -g @elisymlabs/husk
+bun add -g @elisym/husk
 husk init           # creates ./skills with a starter skill
 husk serve          # serves every skill over HTTP on :3000
 ```
@@ -157,11 +153,11 @@ husk build --docker       # emit a Dockerfile for the same skills
 
 ## Packages
 
-| Package                                    | Description                                                                    |
-| ------------------------------------------ | ------------------------------------------------------------------------------ |
-| [`@elisymlabs/husk`](./packages/cli)       | The `husk` CLI - serve, scaffold, call, containerize.                          |
-| [`@elisymlabs/husk-core`](./packages/core) | The engine - loader, executor, and a Web-standard fetch handler you can embed. |
-| [`@elisymlabs/husk-docs`](./packages/docs) | The documentation site (Vocs). `bun --filter @elisymlabs/husk-docs dev`.       |
+| Package                                | Description                                                                    |
+| -------------------------------------- | ------------------------------------------------------------------------------ |
+| [`@elisym/husk`](./packages/cli)       | The `husk` CLI - serve, scaffold, call, containerize.                          |
+| [`@elisym/husk-core`](./packages/core) | The engine - loader, executor, and a Web-standard fetch handler you can embed. |
+| [`@elisym/husk-docs`](./packages/docs) | The documentation site (Vocs). `bun --filter @elisym/husk-docs dev`.           |
 
 ## Embedding the engine
 
@@ -170,7 +166,7 @@ Bun, Deno, Cloudflare Workers, or a Node adapter - which is exactly what lets on
 skill folder run as a server, a function, and a container:
 
 ```ts
-import { loadSkills, createFetchHandler } from '@elisymlabs/husk-core';
+import { loadSkills, createFetchHandler } from '@elisym/husk-core';
 
 const { skills } = loadSkills('./skills');
 const fetch = createFetchHandler({ skills, serviceName: 'My Agent' });

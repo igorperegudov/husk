@@ -1,5 +1,5 @@
 {
-  "name": "@elisymlabs/husk-core",
+  "name": "@elisym/husk-core",
   "version": "0.1.0",
   "description": "HUSK core - turn a skill folder into an HTTP-servable kernel: manifest loader, process executor, and a Web-standard fetch handler.",
   "keywords": [

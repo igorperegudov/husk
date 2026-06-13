@@ -1,4 +1,4 @@
-import { toCard } from '@elisymlabs/husk-core';
+import { toCard } from '@elisym/husk-core';
 import chalk from 'chalk';
 import { loadOrReport, resolveSkillsDir } from '../util';
 

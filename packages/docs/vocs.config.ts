@@ -7,7 +7,7 @@ export default defineConfig({
   titleTemplate: '%s - HUSK',
   description: 'HTTP Universal Skill Kernel - turn a folder of agent skills into an HTTP backend.',
   baseUrl: 'https://husk.elisym.network',
-  logoUrl: { light: '/logo-light.svg', dark: '/logo-dark.svg' },
+  logoUrl: '/logo.svg',
   iconUrl: '/favicon.svg',
   checkDeadlinks: 'warn',
   // "Ask AI" button - opens the docs' MCP endpoint in the reader's ChatGPT/Claude

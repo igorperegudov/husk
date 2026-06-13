@@ -1,4 +1,4 @@
-# @elisymlabs/husk
+# @elisym/husk
 
 The `husk` CLI - [HUSK](https://github.com/elisymlabs/husk), the HTTP Universal
 Skill Kernel. Turn a folder of agent skills into a working HTTP backend with one
@@ -6,7 +6,7 @@ long-lived [Bun](https://bun.sh) process. No SDK, no rewrite: write a script in
 any language, and HUSK publishes it.
 
 ```sh
-bun add -g @elisymlabs/husk
+bun add -g @elisym/husk
 ```
 
 ## Quick start
@@ -49,6 +49,6 @@ That is the whole skill. See the [HUSK guide](https://github.com/elisymlabs/husk
 for the manifest reference, the kernel I/O contract, and deployment patterns.
 
 Requires Bun (the server uses `Bun.serve`). The engine itself lives in
-[`@elisymlabs/husk-core`](https://www.npmjs.com/package/@elisymlabs/husk-core).
+[`@elisym/husk-core`](https://www.npmjs.com/package/@elisym/husk-core).
 
 MIT licensed, by [elisym labs](https://github.com/elisymlabs).

@@ -1,5 +1,5 @@
 /**
- * `@elisymlabs/husk-core` - the HUSK kernel runtime.
+ * `@elisym/husk-core` - the HUSK kernel runtime.
  *
  * Load a folder of agent skills, invoke their kernels with a uniform I/O
  * contract, and serve them over HTTP with a Web-standard fetch handler.
