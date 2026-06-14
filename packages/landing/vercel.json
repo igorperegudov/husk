@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": null,
+  "framework": "vite",
   "installCommand": "bun install",
   "buildCommand": "bun run build",
-  "ignoreCommand": "npx turbo-ignore @elisym/husk-docs"
+  "ignoreCommand": "npx turbo-ignore @elisym/husk-landing"
 }

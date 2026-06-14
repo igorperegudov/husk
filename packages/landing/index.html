@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#060b08" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f5f8f5" media="(prefers-color-scheme: light)" />
+    <title>HUSK - Turn a folder into an API</title>
+    <meta
+      name="description"
+      content="HUSK wraps a folder of agent skills into an HTTP backend with one Bun process. Write a SKILL.md and an LLM runs it, or wrap a script in any language."
+    />
+    <meta property="og:title" content="HUSK - HTTP Universal Skill Kernel" />
+    <meta
+      property="og:description"
+      content="Write a SKILL.md and an LLM runs it. Every skill becomes an HTTP endpoint from one Bun process."
+    />
+    <meta property="og:type" content="website" />
+    <script>
+      // Set the theme class before first paint to avoid a flash of the wrong theme.
+      (function () {
+        try {
+          var saved = localStorage.getItem('husk-theme');
+          var theme =
+            saved || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+          document.documentElement.classList.add(theme);
+        } catch (e) {
+          document.documentElement.classList.add('dark');
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

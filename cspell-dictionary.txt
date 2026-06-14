@@ -61,3 +61,7 @@ subprocess
 subprocesses
 positional
 vocs
+dotgrid
+wordmark
+scanline
+scanlines
