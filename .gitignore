@@ -19,5 +19,8 @@ bun.lock
 packages/docs/cache/
 packages/docs/pages.gen.ts
 
+# Vercel (build output + local project link)
+.vercel/
+
 # deepsec security scanner (scaffold, local findings data, and .env.local with keys)
 .deepsec/
