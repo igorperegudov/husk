@@ -18,3 +18,37 @@
 [data-v-sidebar-curtain] {
   display: none;
 }
+
+/* Wrap long lines in code blocks so they fit fully without horizontal scroll.
+   Mirrors Vocs's built-in wrapped mode (data-v-wrapped), applied to every code
+   block. Uses overflow-wrap so prose breaks at spaces first and only splits
+   long unbreakable tokens (URLs, flags) when there's no other choice.
+
+   Because there is no horizontal scroll anymore, the absolutely-positioned copy
+   button (a child of <pre>) stays pinned to the top-right instead of drifting
+   with the scrolled content. */
+pre[data-v] {
+  overflow-x: hidden;
+}
+pre[data-v] > code,
+pre[data-v] > code > .line {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Reserve room on the right so wrapped text never runs under the copy button.
+   The button sits at right: 0.625rem and is ~1.75rem wide, so clear ~2.4rem. */
+pre[data-v] > code {
+  padding-inline-end: calc(var(--vocs-spacing-code-block-px) + 1.75rem);
+}
+
+/* Always pin the copy button to the top-right. Vocs vertically centers it on
+   single-line blocks via top: 50% plus a -50% translate (the Tailwind
+   `translate` property, fed by --tw-translate-y). We pin top and zero out the
+   vertical translate so it sits in a consistent spot for every block. Setting
+   the custom property (rather than `translate: none`, which the minifier drops
+   as an initial value) reliably survives the build. */
+pre[data-v] > button[data-copied] {
+  top: 0.625rem;
+  --tw-translate-y: 0;
+}

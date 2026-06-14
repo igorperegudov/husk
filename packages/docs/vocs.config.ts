@@ -6,7 +6,7 @@ export default defineConfig({
   title: 'HUSK',
   titleTemplate: '%s - HUSK',
   description: 'HTTP Universal Skill Kernel - turn a folder of agent skills into an HTTP backend.',
-  baseUrl: 'https://husk.elisym.network',
+  baseUrl: 'https://docs.husk.systems',
   logoUrl: '/logo.svg',
   iconUrl: '/favicon.svg',
   checkDeadlinks: 'warn',
