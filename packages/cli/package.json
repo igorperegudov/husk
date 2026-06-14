@@ -1,6 +1,6 @@
 {
   "name": "@elisym/husk",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "HUSK CLI - serve a folder of agent skills over HTTP with one Bun process. Scaffold, list, call, and containerize skills.",
   "keywords": [
     "agent-skills",

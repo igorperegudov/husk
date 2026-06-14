@@ -1,5 +1,6 @@
 import chalk from 'chalk';
 import { Command } from 'commander';
+import { version } from '../package.json';
 import { buildCommand } from './commands/build';
 import { callCommand } from './commands/call';
 import { initCommand } from './commands/init';
@@ -12,7 +13,7 @@ const program = new Command();
 program
   .name('husk')
   .description('HUSK - HTTP Universal Skill Kernel. Serve a folder of agent skills over HTTP.')
-  .version('0.1.0');
+  .version(version);
 
 program
   .command('serve')
