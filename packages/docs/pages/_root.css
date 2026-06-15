@@ -19,27 +19,21 @@
   display: none;
 }
 
-/* Wrap long lines in code blocks so they fit fully without horizontal scroll.
-   Mirrors Vocs's built-in wrapped mode (data-v-wrapped), applied to every code
-   block. Uses overflow-wrap so prose breaks at spaces first and only splits
-   long unbreakable tokens (URLs, flags) when there's no other choice.
-
-   Because there is no horizontal scroll anymore, the absolutely-positioned copy
-   button (a child of <pre>) stays pinned to the top-right instead of drifting
-   with the scrolled content. */
+/* GitHub-style code blocks: long lines scroll horizontally instead of wrapping.
+   Vocs puts the horizontal scroll on <pre>, but the copy button is an
+   absolutely-positioned child of <pre> - so when the code scrolls, the button
+   scrolls away with it (drifting into the middle of the line). Move the scroll
+   to the inner <code> instead: <pre> (and the button anchored to its top-right)
+   stays fixed while the code scrolls underneath. The vertical padding moves onto
+   <code> with the scroll so the scrollbar still sits flush at the block's
+   bottom rather than floating above it. */
 pre[data-v] {
-  overflow-x: hidden;
+  padding-block: 0;
 }
-pre[data-v] > code,
-pre[data-v] > code > .line {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-/* Reserve room on the right so wrapped text never runs under the copy button.
-   The button sits at right: 0.625rem and is ~1.75rem wide, so clear ~2.4rem. */
 pre[data-v] > code {
-  padding-inline-end: calc(var(--vocs-spacing-code-block-px) + 1.75rem);
+  overflow-x: auto;
+  /* The vertical padding Vocs normally puts on <pre> (its py-5). */
+  padding-block: calc(var(--vocs-spacing) * 5);
 }
 
 /* Always pin the copy button to the top-right. Vocs vertically centers it on
@@ -51,4 +45,9 @@ pre[data-v] > code {
 pre[data-v] > button[data-copied] {
   top: 0.625rem;
   --tw-translate-y: 0;
+  /* The copy button is otherwise a bare icon, so on hover it collides with the
+     code underneath it. Give it the code-block background (GitHub-style) so it
+     sits cleanly on top: it blends into the empty top-right corner and masks
+     any character it covers rather than overlapping the text. */
+  background-color: var(--vocs-background-color-code-block);
 }
