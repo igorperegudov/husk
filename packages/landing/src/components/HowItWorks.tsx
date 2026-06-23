@@ -26,7 +26,7 @@ export default function HowItWorks() {
                 whileInView="show"
                 viewport={inView}
                 transition={{ delay: i * 0.04 }}
-                className="grid gap-5 sm:grid-cols-[40px_1fr] sm:gap-7"
+                className="grid gap-5 sm:grid-cols-[40px_minmax(0,1fr)] sm:gap-7"
               >
                 <div className="relative z-10 hidden sm:block">
                   <span className="grid h-10 w-10 place-items-center rounded-xl border border-brand/30 bg-canvas font-mono text-sm font-semibold text-brand shadow-[0_0_20px] shadow-brand/20">
@@ -34,7 +34,7 @@ export default function HowItWorks() {
                   </span>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-[0.85fr_1.15fr] md:items-start md:gap-8">
+                <div className="grid min-w-0 gap-4 md:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] md:items-start md:gap-8">
                   <div className="md:pt-1">
                     <div className="mb-2 flex items-center gap-2 sm:hidden">
                       <span className="font-mono text-xs text-brand">{step.n}</span>
@@ -43,7 +43,7 @@ export default function HowItWorks() {
                     <p className="mt-2 text-pretty leading-relaxed text-mute">{step.body}</p>
                   </div>
 
-                  <div className="flex flex-col gap-3">
+                  <div className="flex min-w-0 flex-col gap-3">
                     {step.files.map((file) => (
                       <CodeBlock
                         key={file.name ?? file.code}
